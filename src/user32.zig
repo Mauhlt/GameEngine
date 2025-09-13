@@ -54,3 +54,49 @@ pub extern "user32" fn UpdateWindow(hWnd: HWND) callconv(.C) bool;
 pub extern "user32" fn GetMessageW(lpMsg: *MSG, hWnd: HWND, wMsgFilterMin: u32, wMsgFilterMax: u32) callconv(.C) bool;
 pub extern "user32" fn TranslateMessage(lpMsg: *const MSG) callconv(.C) bool;
 pub extern "user32" fn DispatchMessageW(lpMsg: *const MSG) void;
+
+const WM = enum {
+    create = 0x0001,
+    destroy = 0x0002,
+    enable = 0x000A,
+
+    enter_size_move = 0x0231,
+    exit_size_move = 0x0232,
+
+    get_icon = 0x007F,
+    get_min_max_info = 0x0024,
+
+    input_lang_change = 0x0051,
+    input_lang_change_request = 0x0050,
+    move = 0x0003,
+    moving = 0x0216,
+    ncactivate = 0x0086,
+    nc_calc_size = 0x0083,
+    nc_calc_create = 0x0081,
+    destroy = 0x0082,
+    nc_null = 0x0000,
+
+    query_drag_icon = 0x0037,
+    query_open = 0x0013,
+    
+    quit = 0x0012,
+    show_window = 0x0018,
+
+    size = 0x0005,
+    sizing = 0x0214,
+
+    style_changed = 0x007D,
+    style_changing = 0x007C,
+
+    theme_changed = 0x031A,
+    user_changed = 0x0054,
+
+    window_pos_changed = 0x0047,
+    windoww_pos_changing = 0x0046,
+    
+    activate_app = 0x001C,
+    cancel_mode = 0x001F,
+    child_activate = 0x0022,
+    close = 0x0010,
+    compacting = 0x0041,
+};
