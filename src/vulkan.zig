@@ -3665,7 +3665,7 @@ pub const PFN_cmdResolveImage = ?*const fn (CommandBuffer, Image, ImageLayout, I
 pub const PFN_cmdSetEvent = ?*const fn (CommandBuffer, Event, PipelineStageFlags) callconv(.c) void;
 pub const PFN_cmdResetEvent = ?*const fn (CommandBuffer, Event, PipelineStageFlags) callconv(.c) void;
 pub const PFN_cmdWaitEvents = ?*const fn (CommandBuffer, u32, [*c]const Event, PipelineStageFlags, PipelineStageFlags, u32, [*c]const MemoryBarrier, u32, [*c]const BufferMemoryBarrier, u32, [*c]const ImageMemoryBarrier) callconv(.c) void;
-pub const PFN_cmdPipelineBarrier = ?*const fn (CommandBuffer, PipelineStageFlags, PipelineStageFlags, DependencyFlags, u32, [*c]const MemoryBarrier, u32, [*c]const BufferMemoryBarrier, u32, [*c]const ImageMemoryBarrier) callconv(.c) void;ªª
+pub const PFN_cmdPipelineBarrier = ?*const fn (CommandBuffer, PipelineStageFlags, PipelineStageFlags, DependencyFlags, u32, [*c]const MemoryBarrier, u32, [*c]const BufferMemoryBarrier, u32, [*c]const ImageMemoryBarrier) callconv(.c) void;
 pub const PFN_cmdBeginQuery = ?*const fn (CommandBuffer, QueryPool, u32, QueryControlFlags) callconv(.c) void;
 pub const PFN_cmdEndQuery = ?*const fn (CommandBuffer, QueryPool, u32) callconv(.c) void;
 pub const PFN_cmdResetQueryPool = ?*const fn (CommandBuffer, QueryPool, u32, u32) callconv(.c) void;
@@ -3681,7 +3681,7 @@ pub extern fn destroyInstance(instance: Instance, p_allocator: [*c]const Allocat
 pub extern fn enumeratePhysicalDevices(instance: Instance, p_physical_device_count: [*c]u32, p_physical_devices: [*c]PhysicalDevice) Result;
 pub extern fn getPhysicalDeviceFeatures(physical_device: PhysicalDevice, p_features: [*c]PhysicalDeviceFeatures) void;
 pub extern fn getPhysicalDeviceFormatProperties(physical_device: PhysicalDevice, format: Format, p_format_properties: [*c]FormatProperties) void;
-pub extern fn getPhysicalDeviceImageFormatProperties(physical_device: PhysicalDevice, format: Format, @"type": ImageType, tiling: ImageTiling, usage: ImageUsageFlags, flags: ImageCreateFlags, p_image_format_properties: [*c]ImageFormatProperties) Result;ªª
+pub extern fn getPhysicalDeviceImageFormatProperties(physical_device: PhysicalDevice, format: Format, @"type": ImageType, tiling: ImageTiling, usage: ImageUsageFlags, flags: ImageCreateFlags, p_image_format_properties: [*c]ImageFormatProperties) Result;
 pub extern fn getPhysicalDeviceProperties(physical_device: PhysicalDevice, p_properties: [*c]PhysicalDeviceProperties) void;
 pub extern fn getPhysicalDeviceQueueFamilyProperties(physical_device: PhysicalDevice, p_queue_family_property_count: [*c]u32, p_queue_family_properties: [*c]QueueFamilyProperties) void;
 pub extern fn getPhysicalDeviceMemoryProperties(physical_device: PhysicalDevice, p_memory_properties: [*c]PhysicalDeviceMemoryProperties) void;
@@ -3709,7 +3709,7 @@ pub extern fn bindImageMemory(device: Device, image: Image, memory: DeviceMemory
 pub extern fn getBufferMemoryRequirements(device: Device, buffer: Buffer, p_memory_requirements: [*c]MemoryRequirements) void;
 pub extern fn getImageMemoryRequirements(device: Device, image: Image, p_memory_requirements: [*c]MemoryRequirements) void;
 pub extern fn getImageSparseMemoryRequirements(device: Device, image: Image, p_sparse_memory_requirement_count: [*c]u32, p_sparse_memory_requirements: [*c]SparseImageMemoryRequirements) void;
-pub extern fn getPhysicalDeviceSparseImageFormatProperties(physical_device: PhysicalDevice, format: Format, @"type": ImageType, samples: SampleCountFlagBits, usage: ImageUsageFlags, tiling: ImageTiling, p_property_count: [*c]u32, p_properties: [*c]SparseImageFormatProperties) void;ªª
+pub extern fn getPhysicalDeviceSparseImageFormatProperties(physical_device: PhysicalDevice, format: Format, @"type": ImageType, samples: SampleCountFlagBits, usage: ImageUsageFlags, tiling: ImageTiling, p_property_count: [*c]u32, p_properties: [*c]SparseImageFormatProperties) void;
 pub extern fn queueBindSparse(queue: Queue, bind_info_count: u32, p_bind_info: [*c]const BindSparseInfo, fence: Fence) Result;
 pub extern fn createFence(device: Device, p_create_info: [*c]const FenceCreateInfo, p_allocator: [*c]const AllocationCallbacks, p_fence: [*c]Fence) Result;
 pub extern fn destroyFence(device: Device, fence: Fence, p_allocator: [*c]const AllocationCallbacks) void;
@@ -3801,8 +3801,8 @@ pub extern fn cmdClearAttachments(command_buffer: CommandBuffer, attachment_coun
 pub extern fn cmdResolveImage(command_buffer: CommandBuffer, src_image: Image, src_imageLayout: ImageLayout, dst_image: Image, dst_imageLayout: ImageLayout, region_count: u32, p_regions: [*c]const ImageResolve) void;
 pub extern fn cmdSetEvent(command_buffer: CommandBuffer, event: Event, stage_mask: PipelineStageFlags) void;
 pub extern fn cmdResetEvent(command_buffer: CommandBuffer, event: Event, stage_mask: PipelineStageFlags) void;
-pub extern fn cmdWaitEvents(command_buffer: CommandBuffer, event_count: u32, p_events: [*c]const Event, src_stage_mask: PipelineStageFlags, dst_stage_mask: PipelineStageFlags, memory_barrier_count: u32, p_memory_barriers: [*c]const MemoryBarrier, buffer_memory_barrier_count: u32, p_buffer_memory_barriers: [*c]const BufferMemoryBarrier, image_memory_barrier_count: u32, p_image_memory_barriers: [*c]const ImageMemoryBarrier) void;ªª
-pub extern fn cmdPipelineBarrier(command_buffer: CommandBuffer, src_stage_mask: PipelineStageFlags, dst_stage_mask: PipelineStageFlags, dependency_flags: DependencyFlags, memory_barrier_count: u32, p_memory_barriers: [*c]const MemoryBarrier, buffer_memory_barrier_count: u32, p_buffer_memory_barriers: [*c]const BufferMemoryBarrier, image_memory_barrier_count: u32, p_image_memory_barriers: [*c]const ImageMemoryBarrier) void;ªªªª
+pub extern fn cmdWaitEvents(command_buffer: CommandBuffer, event_count: u32, p_events: [*c]const Event, src_stage_mask: PipelineStageFlags, dst_stage_mask: PipelineStageFlags, memory_barrier_count: u32, p_memory_barriers: [*c]const MemoryBarrier, buffer_memory_barrier_count: u32, p_buffer_memory_barriers: [*c]const BufferMemoryBarrier, image_memory_barrier_count: u32, p_image_memory_barriers: [*c]const ImageMemoryBarrier) void;
+pub extern fn cmdPipelineBarrier(command_buffer: CommandBuffer, src_stage_mask: PipelineStageFlags, dst_stage_mask: PipelineStageFlags, dependency_flags: DependencyFlags, memory_barrier_count: u32, p_memory_barriers: [*c]const MemoryBarrier, buffer_memory_barrier_count: u32, p_buffer_memory_barriers: [*c]const BufferMemoryBarrier, image_memory_barrier_count: u32, p_image_memory_barriers: [*c]const ImageMemoryBarrier) void;
 pub extern fn cmdBeginQuery(command_buffer: CommandBuffer, query_pool: QueryPool, query: u32, flags: QueryControlFlags) void;
 pub extern fn cmdEndQuery(command_buffer: CommandBuffer, query_pool: QueryPool, query: u32) void;
 pub extern fn cmdResetQueryPool(command_buffer: CommandBuffer, query_pool: QueryPool, first_query: u32, query_count: u32) void;
@@ -6830,11 +6830,6 @@ pub const QueueFamilyQueryResultStatusPropertiesKHR = extern struct {
     p_next: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
     query_result_status_support: Bool32 = @import("std").mem.zeroes(Bool32),
 };
-pub const QueueFamilyVideoPropertiesKHR = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
-    video_codec_operations: VideoCodecOperationFlagsKHR = @import("std").mem.zeroes(VideoCodecOperationFlagsKHR),
-};
 pub const PhysicalDeviceVideoFormatInfoKHR = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
@@ -7514,17 +7509,6 @@ pub const PhysicalDevicePresentIdFeaturesKHR = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
     present_id: Bool32 = @import("std").mem.zeroes(Bool32),
-};
-pub const QueryPoolVideoEncodeFeedbackCreateInfoKHR = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    encode_feedback_flags: VideoEncodeFeedbackFlagsKHR = @import("std").mem.zeroes(VideoEncodeFeedbackFlagsKHR),
-};
-pub const PhysicalDeviceVideoEncodeQualityLevelInfoKHR = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    p_video_profile: [*c]const VideoProfileInfoKHR = @import("std").mem.zeroes([*c]const VideoProfileInfoKHR),
-    quality_level: u32 = @import("std").mem.zeroes(u32),
 };
 pub const PipelineStageFlags2KHR = PipelineStageFlags2;
 pub const PipelineStageFlagBits2KHR = PipelineStageFlagBits2;
@@ -8275,7 +8259,7 @@ pub const ExternalImageFormatPropertiesNV = extern struct {
     compatible_handle_types: ExternalMemoryHandleTypeFlagsNV = @import("std").mem.zeroes(ExternalMemoryHandleTypeFlagsNV),
 };
 pub const PFN_getPhysicalDeviceExternalImageFormatPropertiesNV = ?*const fn (PhysicalDevice, Format, ImageType, ImageTiling, ImageUsageFlags, ImageCreateFlags, ExternalMemoryHandleTypeFlagsNV, [*c]ExternalImageFormatPropertiesNV) callconv(.c) Result;
-pub extern fn getPhysicalDeviceExternalImageFormatPropertiesNv(physical_device: PhysicalDevice, format: Format, @"type": ImageType, tiling: ImageTiling, usage: ImageUsageFlags, flags: ImageCreateFlags, external_handle_type: ExternalMemoryHandleTypeFlagsNV, p_external_image_format_properties: [*c]ExternalImageFormatPropertiesNV) Result;ªª
+pub extern fn getPhysicalDeviceExternalImageFormatPropertiesNv(physical_device: PhysicalDevice, format: Format, @"type": ImageType, tiling: ImageTiling, usage: ImageUsageFlags, flags: ImageCreateFlags, external_handle_type: ExternalMemoryHandleTypeFlagsNV, p_external_image_format_properties: [*c]ExternalImageFormatPropertiesNV) Result;
 pub const ExternalMemoryImageCreateInfoNV = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
@@ -8999,8 +8983,6 @@ pub const GeometryFlagBits = enum(u32) {
     pub const opaque_bit_khr = Self.opaque_bit_nv;
 };
 pub const GeometryFlags = PES(GeometryFlagBits);
-pub const GeometryFlagsNV = GeometryFlagsKHR;
-pub const GeometryFlagBitsNV = GeometryFlagBitsKHR;
 pub const GeometryInstanceFlagBits = enum(u32) {
     triangle_cull_disable_bit_nv = 1,
     triangle_flip_facing_bit_khr = 2,
@@ -9017,8 +8999,6 @@ pub const GeometryInstanceFlagBits = enum(u32) {
     pub const triangle_facing_cull_disable_bit_khr = Self.triangle_cull_disable_bit_nv;
 };
 pub const GeometryInstanceFlags = PES(GeometryInstanceFlagBits);
-pub const GeometryInstanceFlagsNV = GeometryInstanceFlagsKHR;
-pub const GeometryInstanceFlagBitsNV = GeometryInstanceFlagBitsKHR;
 pub const BuildAccelerationStructureFlagBits = enum(u32) {
     allow_update_bit_nv = 1,
     allow_compaction_bit_nv = 2,
@@ -9039,8 +9019,6 @@ pub const BuildAccelerationStructureFlagBits = enum(u32) {
     pub const allow_update_bit_khr = Self.allow_update_bit_nv;
 };
 pub const BuildAccelerationStructureFlags = PES(BuildAccelerationStructureFlagBits);
-pub const BuildAccelerationStructureFlagsNV = BuildAccelerationStructureFlagsKHR;
-pub const BuildAccelerationStructureFlagBitsNV = BuildAccelerationStructureFlagBitsKHR;
 pub const RayTracingShaderGroupCreateInfoNV = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
@@ -9097,21 +9075,6 @@ pub const GeometryNV = extern struct {
     geometry: GeometryDataNV = @import("std").mem.zeroes(GeometryDataNV),
     flags: GeometryFlags = @import("std").mem.zeroes(GeometryFlags),
 };
-pub const AccelerationStructureInfoNV = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    type: AccelerationStructureTypeNV = @import("std").mem.zeroes(AccelerationStructureTypeNV),
-    flags: BuildAccelerationStructureFlagsNV = @import("std").mem.zeroes(BuildAccelerationStructureFlagsNV),
-    instance_count: u32 = @import("std").mem.zeroes(u32),
-    geometry_count: u32 = @import("std").mem.zeroes(u32),
-    p_geometries: [*c]const GeometryNV = @import("std").mem.zeroes([*c]const GeometryNV),
-};
-pub const AccelerationStructureCreateInfoNV = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    compacted_size: DeviceSize = @import("std").mem.zeroes(DeviceSize),
-    info: AccelerationStructureInfoNV = @import("std").mem.zeroes(AccelerationStructureInfoNV),
-};
 pub const BindAccelerationStructureMemoryInfoNV = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
@@ -9160,11 +9123,9 @@ pub const AabbPositionsKHR = extern struct {
 pub const AabbPositionsNV = AabbPositionsKHR;
 pub const AccelerationStructureInstanceKHR = enum(u64) { null = 0, _ };
 pub const AccelerationStructureInstanceNV = AccelerationStructureInstanceKHR;
-pub const PFN_createAccelerationStructureNV = ?*const fn (Device, [*c]const AccelerationStructureCreateInfoNV, [*c]const AllocationCallbacks, [*c]AccelerationStructureNV) callconv(.c) Result;
 pub const PFN_destroyAccelerationStructureNV = ?*const fn (Device, AccelerationStructureNV, [*c]const AllocationCallbacks) callconv(.c) void;
 pub const PFN_getAccelerationStructureMemoryRequirementsNV = ?*const fn (Device, [*c]const AccelerationStructureMemoryRequirementsInfoNV, [*c]MemoryRequirements2KHR) callconv(.c) void;
 pub const PFN_bindAccelerationStructureMemoryNV = ?*const fn (Device, u32, [*c]const BindAccelerationStructureMemoryInfoNV) callconv(.c) Result;
-pub const PFN_cmdBuildAccelerationStructureNV = ?*const fn (CommandBuffer, [*c]const AccelerationStructureInfoNV, Buffer, DeviceSize, Bool32, AccelerationStructureNV, AccelerationStructureNV, Buffer, DeviceSize) callconv(.c) void;
 pub const PFN_cmdCopyAccelerationStructureNV = ?*const fn (CommandBuffer, AccelerationStructureNV, AccelerationStructureNV, CopyAccelerationStructureModeKHR) callconv(.c) void;
 pub const PFN_cmdTraceRaysNV = ?*const fn (CommandBuffer, Buffer, DeviceSize, Buffer, DeviceSize, DeviceSize, Buffer, DeviceSize, DeviceSize, Buffer, DeviceSize, DeviceSize, u32, u32, u32) callconv(.c) void;
 pub const PFN_createRayTracingPipelinesNV = ?*const fn (Device, PipelineCache, u32, [*c]const RayTracingPipelineCreateInfoNV, [*c]const AllocationCallbacks, [*c]Pipeline) callconv(.c) Result;
@@ -9173,11 +9134,9 @@ pub const PFN_getRayTracingShaderGroupHandlesNV = ?*const fn (Device, Pipeline, 
 pub const PFN_getAccelerationStructureHandleNV = ?*const fn (Device, AccelerationStructureNV, usize, ?*anyopaque) callconv(.c) Result;
 pub const PFN_cmdWriteAccelerationStructuresPropertiesNV = ?*const fn (CommandBuffer, u32, [*c]const AccelerationStructureNV, QueryType, QueryPool, u32) callconv(.c) void;
 pub const PFN_compileDeferredNV = ?*const fn (Device, Pipeline, u32) callconv(.c) Result;
-pub extern fn createAccelerationStructureNv(device: Device, p_create_info: [*c]const AccelerationStructureCreateInfoNV, p_allocator: [*c]const AllocationCallbacks, p_acceleration_structure: [*c]AccelerationStructureNV) Result;
 pub extern fn destroyAccelerationStructureNv(device: Device, acceleration_structure: AccelerationStructureNV, p_allocator: [*c]const AllocationCallbacks) void;
 pub extern fn getAccelerationStructureMemoryRequirementsNv(device: Device, p_info: [*c]const AccelerationStructureMemoryRequirementsInfoNV, p_memory_requirements: [*c]MemoryRequirements2KHR) void;
 pub extern fn bindAccelerationStructureMemoryNv(device: Device, bind_info_count: u32, p_bind_infos: [*c]const BindAccelerationStructureMemoryInfoNV) Result;
-pub extern fn cmdBuildAccelerationStructureNv(command_buffer: CommandBuffer, p_info: [*c]const AccelerationStructureInfoNV, instance_data: Buffer, instance_offset: DeviceSize, update: Bool32, dst: AccelerationStructureNV, src: AccelerationStructureNV, scratch: Buffer, scratch_offset: DeviceSize) void;
 pub extern fn cmdCopyAccelerationStructureNv(command_buffer: CommandBuffer, dst: AccelerationStructureNV, src: AccelerationStructureNV, mode: CopyAccelerationStructureModeKHR) void;
 pub extern fn cmdTraceRaysNv(command_buffer: CommandBuffer, raygen_shader_binding_table_buffer: Buffer, raygen_shader_binding_offset: DeviceSize, miss_shader_binding_table_buffer: Buffer, miss_shader_binding_offset: DeviceSize, miss_shader_binding_stride: DeviceSize, hit_shader_binding_table_buffer: Buffer, hit_shader_binding_offset: DeviceSize, hit_shader_binding_stride: DeviceSize, callable_shader_binding_table_buffer: Buffer, callable_shader_binding_offset: DeviceSize, callable_shader_binding_stride: DeviceSize, width: u32, height: u32, depth: u32) void;
 pub extern fn createRayTracingPipelinesNv(device: Device, pipeline_cache: PipelineCache, create_info_count: u32, p_create_infos: [*c]const RayTracingPipelineCreateInfoNV, p_allocator: [*c]const AllocationCallbacks, p_pipelines: [*c]Pipeline) Result;
@@ -11136,20 +11095,13 @@ pub const PFN_cmdCopyMemoryToMicromapEXT = ?*const fn (CommandBuffer, [*c]const 
 pub const PFN_cmdWriteMicromapsPropertiesEXT = ?*const fn (CommandBuffer, u32, [*c]const MicromapEXT, QueryType, QueryPool, u32) callconv(.c) void;
 pub const PFN_getDeviceMicromapCompatibilityEXT = ?*const fn (Device, [*c]const MicromapVersionInfoEXT, [*c]AccelerationStructureCompatibilityKHR) callconv(.c) void;
 pub const PFN_getMicromapBuildSizesEXT = ?*const fn (Device, AccelerationStructureBuildTypeKHR, [*c]const MicromapBuildInfoEXT, [*c]MicromapBuildSizesInfoEXT) callconv(.c) void;
-pub extern fn createMicromapExt(device: Device, p_create_info: [*c]const Micromap_create_infoEXT, p_allocator: [*c]const AllocationCallbacks, p_micromap: [*c]MicromapEXT) Result;
 pub extern fn destroyMicromapExt(device: Device, micromap: MicromapEXT, p_allocator: [*c]const AllocationCallbacks) void;
 pub extern fn cmdBuildMicromapsExt(command_buffer: CommandBuffer, info_count: u32, p_infos: [*c]const MicromapBuildInfoEXT) void;
 pub extern fn buildMicromapsExt(device: Device, deferred_operation: DeferredOperationKHR, info_count: u32, p_infos: [*c]const MicromapBuildInfoEXT) Result;
-pub extern fn copyMicromapExt(device: Device, deferred_operation: DeferredOperationKHR, p_info: [*c]const CopyMicromap_infoEXT) Result;
 pub extern fn copyMicromapToMemoryExt(device: Device, deferred_operation: DeferredOperationKHR, p_info: [*c]const CopyMicromapToMemoryInfoEXT) Result;
-pub extern fn copyMemoryToMicromapExt(device: Device, deferred_operation: DeferredOperationKHR, p_info: [*c]const CopyMemoryToMicromap_infoEXT) Result;
 pub extern fn writeMicromapsPropertiesExt(device: Device, micromap_count: u32, p_micromaps: [*c]const MicromapEXT, query_type: QueryType, data_size: usize, p_data: ?*anyopaque, stride: usize) Result;
-pub extern fn cmdCopyMicromapExt(command_buffer: CommandBuffer, p_info: [*c]const CopyMicromap_infoEXT) void;
 pub extern fn cmdCopyMicromapToMemoryExt(command_buffer: CommandBuffer, p_info: [*c]const CopyMicromapToMemoryInfoEXT) void;
-pub extern fn cmdCopyMemoryToMicromapExt(command_buffer: CommandBuffer, p_info: [*c]const CopyMemoryToMicromap_infoEXT) void;
 pub extern fn cmdWriteMicromapsPropertiesExt(command_buffer: CommandBuffer, micromap_count: u32, p_micromaps: [*c]const MicromapEXT, query_type: QueryType, query_pool: QueryPool, first_query: u32) void;
-pub extern fn getDeviceMicromap_compatibilityExt(device: Device, p_version_info: [*c]const Micromap_version_infoEXT, p_compatibility: [*c]AccelerationStructureCompatibilityKHR) void;
-pub extern fn getMicromapBuildSizesExt(device: Device, build_type: AccelerationStructureBuildTypeKHR, p_build_info: [*c]const Micromap_build_infoEXT, p_size_info: [*c]MicromapBuildSizesInfoEXT) void;
 pub const PhysicalDeviceClusterCullingShaderFeaturesHUAWEI = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
@@ -13139,6 +13091,8 @@ pub extern fn cmdDrawMeshTasksExt(command_buffer: CommandBuffer, group_count_x: 
 pub extern fn cmdDrawMeshTasksIndirectExt(command_buffer: CommandBuffer, buffer: Buffer, offset: DeviceSize, draw_count: u32, stride: u32) void;
 pub extern fn cmdDrawMeshTasksIndirectCountExt(command_buffer: CommandBuffer, buffer: Buffer, offset: DeviceSize, count_buffer: Buffer, count_bufferOffset: DeviceSize, max_draw_count: u32, stride: u32) void;
 pub const Win32SurfaceCreateFlagsKHR = Flags;
+const HINSTANCE = @import("std").os.windows.HINSTANCE;
+const HWND = @import("std").os.windows.HWND;
 pub const Win32SurfaceCreateInfoKHR = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
@@ -13150,20 +13104,6 @@ pub const PFN_createWin32SurfaceKHR = ?*const fn (Instance, [*c]const Win32Surfa
 pub const PFN_getPhysicalDeviceWin32PresentationSupportKHR = ?*const fn (PhysicalDevice, u32) callconv(.c) Bool32;
 pub extern fn createWin32SurfaceKhr(instance: Instance, p_create_info: [*c]const Win32SurfaceCreateInfoKHR, p_allocator: [*c]const AllocationCallbacks, p_surface: [*c]SurfaceKHR) Result;
 pub extern fn getPhysicalDeviceWin32PresentationSupportKhr(physical_device: PhysicalDevice, queue_family_index: u32) Bool32;
-pub const ImportMemoryWin32HandleInfoKHR = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    handle_type: ExternalMemoryHandleTypeFlagBits = @import("std").mem.zeroes(ExternalMemoryHandleTypeFlagBits),
-    handle: HANDLE = @import("std").mem.zeroes(HANDLE),
-    name: LPCWSTR = @import("std").mem.zeroes(LPCWSTR),
-};
-pub const ExportMemoryWin32HandleInfoKHR = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    p_attributes: [*c]const SECURITY_ATTRIBUTES = @import("std").mem.zeroes([*c]const SECURITY_ATTRIBUTES),
-    dw_access: DWORD = @import("std").mem.zeroes(DWORD),
-    name: LPCWSTR = @import("std").mem.zeroes(LPCWSTR),
-};
 pub const MemoryWin32HandlePropertiesKHR = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
@@ -13175,10 +13115,6 @@ pub const MemoryGetWin32HandleInfoKHR = extern struct {
     memory: DeviceMemory = @import("std").mem.zeroes(DeviceMemory),
     handle_type: ExternalMemoryHandleTypeFlagBits = @import("std").mem.zeroes(ExternalMemoryHandleTypeFlagBits),
 };
-pub const PFN_getMemoryWin32HandleKHR = ?*const fn (Device, [*c]const MemoryGetWin32HandleInfoKHR, [*c]HANDLE) callconv(.c) Result;
-pub const PFN_getMemoryWin32HandlePropertiesKHR = ?*const fn (Device, ExternalMemoryHandleTypeFlagBits, HANDLE, [*c]MemoryWin32HandlePropertiesKHR) callconv(.c) Result;
-pub extern fn getMemoryWin32HandleKhr(device: Device, p_get_win32_handle_info: [*c]const MemoryGetWin32HandleInfoKHR, p_handle: [*c]HANDLE) Result;
-pub extern fn getMemoryWin32HandlePropertiesKhr(device: Device, handle_type: ExternalMemoryHandleTypeFlagBits, handle: HANDLE, p_memory_win32_handle_properties: [*c]MemoryWin32HandlePropertiesKHR) Result;
 pub const Win32KeyedMutexAcquireReleaseInfoKHR = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
@@ -13189,22 +13125,6 @@ pub const Win32KeyedMutexAcquireReleaseInfoKHR = extern struct {
     release_count: u32 = @import("std").mem.zeroes(u32),
     p_release_syncs: [*c]const DeviceMemory = @import("std").mem.zeroes([*c]const DeviceMemory),
     p_release_keys: [*c]const u64 = @import("std").mem.zeroes([*c]const u64),
-};
-pub const ImportSemaphoreWin32HandleInfoKHR = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    semaphore: Semaphore = @import("std").mem.zeroes(Semaphore),
-    flags: SemaphoreImportFlags = @import("std").mem.zeroes(SemaphoreImportFlags),
-    handle_type: ExternalSemaphoreHandleTypeFlagBits = @import("std").mem.zeroes(ExternalSemaphoreHandleTypeFlagBits),
-    handle: HANDLE = @import("std").mem.zeroes(HANDLE),
-    name: LPCWSTR = @import("std").mem.zeroes(LPCWSTR),
-};
-pub const ExportSemaphoreWin32HandleInfoKHR = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    p_attributes: [*c]const SECURITY_ATTRIBUTES = @import("std").mem.zeroes([*c]const SECURITY_ATTRIBUTES),
-    dw_access: DWORD = @import("std").mem.zeroes(DWORD),
-    name: LPCWSTR = @import("std").mem.zeroes(LPCWSTR),
 };
 pub const D3D12FenceSubmitInfoKHR = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
@@ -13220,50 +13140,12 @@ pub const SemaphoreGetWin32HandleInfoKHR = extern struct {
     semaphore: Semaphore = @import("std").mem.zeroes(Semaphore),
     handle_type: ExternalSemaphoreHandleTypeFlagBits = @import("std").mem.zeroes(ExternalSemaphoreHandleTypeFlagBits),
 };
-pub const PFN_importSemaphoreWin32HandleKHR = ?*const fn (Device, [*c]const ImportSemaphoreWin32HandleInfoKHR) callconv(.c) Result;
-pub const PFN_getSemaphoreWin32HandleKHR = ?*const fn (Device, [*c]const SemaphoreGetWin32HandleInfoKHR, [*c]HANDLE) callconv(.c) Result;
-pub extern fn importSemaphoreWin32HandleKhr(device: Device, p_import_semaphore_win32_handle_info: [*c]const ImportSemaphoreWin32HandleInfoKHR) Result;
-pub extern fn getSemaphoreWin32HandleKhr(device: Device, p_get_win32_handle_info: [*c]const SemaphoreGetWin32HandleInfoKHR, p_handle: [*c]HANDLE) Result;
-pub const ImportFenceWin32HandleInfoKHR = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    fence: Fence = @import("std").mem.zeroes(Fence),
-    flags: FenceImportFlags = @import("std").mem.zeroes(FenceImportFlags),
-    handle_type: ExternalFenceHandleTypeFlagBits = @import("std").mem.zeroes(ExternalFenceHandleTypeFlagBits),
-    handle: HANDLE = @import("std").mem.zeroes(HANDLE),
-    name: LPCWSTR = @import("std").mem.zeroes(LPCWSTR),
-};
-pub const ExportFenceWin32HandleInfoKHR = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    p_attributes: [*c]const SECURITY_ATTRIBUTES = @import("std").mem.zeroes([*c]const SECURITY_ATTRIBUTES),
-    dw_access: DWORD = @import("std").mem.zeroes(DWORD),
-    name: LPCWSTR = @import("std").mem.zeroes(LPCWSTR),
-};
 pub const FenceGetWin32HandleInfoKHR = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
     fence: Fence = @import("std").mem.zeroes(Fence),
     handle_type: ExternalFenceHandleTypeFlagBits = @import("std").mem.zeroes(ExternalFenceHandleTypeFlagBits),
 };
-pub const PFN_importFenceWin32HandleKHR = ?*const fn (Device, [*c]const ImportFenceWin32HandleInfoKHR) callconv(.c) Result;
-pub const PFN_getFenceWin32HandleKHR = ?*const fn (Device, [*c]const FenceGetWin32HandleInfoKHR, [*c]HANDLE) callconv(.c) Result;
-pub extern fn importFenceWin32HandleKhr(device: Device, p_import_fence_win32_handle_info: [*c]const ImportFenceWin32HandleInfoKHR) Result;
-pub extern fn getFenceWin32HandleKhr(device: Device, p_get_win32_handle_info: [*c]const FenceGetWin32HandleInfoKHR, p_handle: [*c]HANDLE) Result;
-pub const ImportMemoryWin32HandleInfoNV = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    handle_type: ExternalMemoryHandleTypeFlagsNV = @import("std").mem.zeroes(ExternalMemoryHandleTypeFlagsNV),
-    handle: HANDLE = @import("std").mem.zeroes(HANDLE),
-};
-pub const ExportMemoryWin32HandleInfoNV = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    p_attributes: [*c]const SECURITY_ATTRIBUTES = @import("std").mem.zeroes([*c]const SECURITY_ATTRIBUTES),
-    dw_access: DWORD = @import("std").mem.zeroes(DWORD),
-};
-pub const PFN_getMemoryWin32HandleNV = ?*const fn (Device, DeviceMemory, ExternalMemoryHandleTypeFlagsNV, [*c]HANDLE) callconv(.c) Result;
-pub extern fn getMemoryWin32HandleNv(device: Device, memory: DeviceMemory, handle_type: ExternalMemoryHandleTypeFlagsNV, p_handle: [*c]HANDLE) Result;
 pub const Win32KeyedMutexAcquireReleaseInfoNV = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
@@ -13292,15 +13174,9 @@ pub const SurfaceCapabilitiesFullScreenExclusiveEXT = extern struct {
     p_next: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
     full_screen_exclusive_supported: Bool32 = @import("std").mem.zeroes(Bool32),
 };
-pub const SurfaceFullScreenExclusiveWin32InfoEXT = extern struct {
-    s_type: StructureType = @import("std").mem.zeroes(StructureType),
-    p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
-    hmonitor: HMONITOR = @import("std").mem.zeroes(HMONITOR),
-};
 pub const PFN_getPhysicalDeviceSurfacePresentModes2EXT = ?*const fn (PhysicalDevice, [*c]const PhysicalDeviceSurfaceInfo2KHR, [*c]u32, [*c]PresentModeKHR) callconv(.c) Result;
 pub const PFN_acquireFullScreenExclusiveModeEXT = ?*const fn (Device, SwapchainKHR) callconv(.c) Result;
 pub const PFN_releaseFullScreenExclusiveModeEXT = ?*const fn (Device, SwapchainKHR) callconv(.c) Result;
-pub const PFN_getDeviceGroupSurfacePresentModes2EXT = ?*const fn (Device, [*c]const PhysicalDeviceSurfaceInfo2KHR, [*c]DeviceGroupPresentModeFlags) callconv(.c) Result;
 pub extern fn getPhysicalDeviceSurfacePresentModes2Ext(physical_device: PhysicalDevice, p_surface_info: [*c]const PhysicalDeviceSurfaceInfo2KHR, p_present_mode_count: [*c]u32, p_present_modes: [*c]PresentModeKHR) Result;
 pub extern fn acquireFullScreenExclusiveModeExt(device: Device, swapchain: SwapchainKHR) Result;
 pub extern fn releaseFullScreenExclusiveModeExt(device: Device, swapchain: SwapchainKHR) Result;

@@ -29,16 +29,17 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("vulkan-1", .{});
     exe.addIncludePath(b.path("Vulkan/Include"));
     exe.root_module.addImport("PackedEnumSet", PackedEnumSet.module("PackedEnumSet"));
-
     switch (target.result.os.tag) {
         .windows => {
             exe.linkSystemLibrary("kernel32");
             exe.linkSystemLibrary("user32");
+            // exe.linkSystemLibrary("gdi32");
         },
         .macos => {},
         .linux => {},
         else => unreachable,
     }
+
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
