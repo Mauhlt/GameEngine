@@ -6,30 +6,30 @@ const win = @import("windows/windows.zig");
 // const vk = @import("vulkan.zig");
 
 pub fn main() void {
+    // // allocator
+    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // const allo = gpa.allocator();
+    // defer std.debug.assert(gpa.deinit() == .ok);
+    // window
     const instance = win.GetModuleHandleW(null);
-    // wide strings
     const class_name = std.unicode.utf8ToUtf16LeStringLiteral("ZigWindowClass");
     const window_title = std.unicode.utf8ToUtf16LeStringLiteral("Zig Unicode Window");
-    // icons + cursors
-    const icon = win.LoadIconW(.null, std.unicode.utf8ToUtf16LeStringLiteral("IDI_APPLICATION"));
-    const cursor = win.LoadCursorW(.null, std.unicode.utf8ToUtf16LeStringLiteral("IDC_ARROW"));
+    // _ = window_title;
     var wc: win.WNDCLASSEXW = .{
-        .style = win.redraw.bits.mask,
+        .style = win.class_style_draw,
         .instance = instance,
-        .icon = icon,
-        .cursor = cursor,
+        .icon = win.LoadIconW(null, std.unicode.utf8ToUtf16LeStringLiteral("IDI_APPLICATION")),
+        .cursor = win.LoadCursorW(null, std.unicode.utf8ToUtf16LeStringLiteral("IDC_ARROW")),
         .brush = win.GetSysColorBrush(.window),
         .menu_name = null,
         .class_name = class_name,
-        .small_icon = icon,
+        .small_icon = win.LoadIconW(null, std.unicode.utf8ToUtf16LeStringLiteral("IDI_APPLICATION")),
     };
-    // register
-    if (win.RegisterClassExW(&wc) == .null) {
+    if (win.RegisterClassExW(&wc) == 0) {
         print("Registering Class Failed\n", .{});
         return;
     }
-    // HWND
-    const hwnd = switch (win.CreateWindowExW(
+    const hwnd = win.CreateWindowExW(
         0,
         class_name,
         window_title,
@@ -38,21 +38,16 @@ pub fn main() void {
         100,
         800,
         600,
-        .null,
-        .null,
+        null,
+        null,
         instance,
-        .null,
-    )) {
-        .null => {
-            print("Create Window Failed.\n", .{});
-            return;
-        },
-        else => |value| value,
+        null,
+    ) orelse {
+        print("CreateWindow Failed.\n", .{});
+        return;
     };
-    // Show + Update
     _ = win.ShowWindow(hwnd, .show);
     _ = win.UpdateWindow(hwnd);
-
     // Surface
     // const surface_info = vk.Win32SurfaceCreateInfoKHR{
     //     .s_type = .win32_surface_create_info_khr,
@@ -67,13 +62,10 @@ pub fn main() void {
     //     .success => {},
     //     else => return error.FailedToCreateVulkanSurface,
     // }
-
-    // // messages
-    // var msg: win.MSG = undefined;
-    // while (win.GetMessageW(&msg, .null, 0, 0) != 0) {
-    //     _ = win.TranslateMessage(&msg);
-    //     _ = win.DispatchMessageW(&msg);
-    // }
-    var i: usize = 0;
-    while (i < 1_000_000_000) : (i += 1) {}
+    // messages
+    var msg: win.MSG = undefined;
+    while (win.GetMessageW(&msg, null, 0, 0) != 0) {
+        _ = win.TranslateMessage(&msg);
+        _ = win.DispatchMessageW(&msg);
+    }
 }

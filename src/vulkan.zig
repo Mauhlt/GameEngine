@@ -13091,8 +13091,6 @@ pub extern fn cmdDrawMeshTasksExt(command_buffer: CommandBuffer, group_count_x: 
 pub extern fn cmdDrawMeshTasksIndirectExt(command_buffer: CommandBuffer, buffer: Buffer, offset: DeviceSize, draw_count: u32, stride: u32) void;
 pub extern fn cmdDrawMeshTasksIndirectCountExt(command_buffer: CommandBuffer, buffer: Buffer, offset: DeviceSize, count_buffer: Buffer, count_bufferOffset: DeviceSize, max_draw_count: u32, stride: u32) void;
 pub const Win32SurfaceCreateFlagsKHR = Flags;
-const HINSTANCE = @import("std").os.windows.HINSTANCE;
-const HWND = @import("std").os.windows.HWND;
 pub const Win32SurfaceCreateInfoKHR = extern struct {
     s_type: StructureType = @import("std").mem.zeroes(StructureType),
     p_next: ?*const anyopaque = @import("std").mem.zeroes(?*const anyopaque),
