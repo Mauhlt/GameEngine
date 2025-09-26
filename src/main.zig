@@ -1,79 +1,13 @@
 const std = @import("std");
 const print = std.debug.print;
-// windows
-const win = @import("windows/windows.zig");
-// vulkan
-// const vk = @import("vulkan.zig");
+const engine = @import("engine.zig");
 
-pub fn main() void {
-    const instance = win.GetModuleHandleW(null);
-    // wide strings
-    const class_name = std.unicode.utf8ToUtf16LeStringLiteral("ZigWindowClass");
-    const window_title = std.unicode.utf8ToUtf16LeStringLiteral("Zig Unicode Window");
-    // icons + cursors
-    const icon = win.LoadIconW(.null, std.unicode.utf8ToUtf16LeStringLiteral("IDI_APPLICATION"));
-    const cursor = win.LoadCursorW(.null, std.unicode.utf8ToUtf16LeStringLiteral("IDC_ARROW"));
-    var wc: win.WNDCLASSEXW = .{
-        .style = win.redraw.bits.mask,
-        .instance = instance,
-        .icon = icon,
-        .cursor = cursor,
-        .brush = win.GetSysColorBrush(.window),
-        .menu_name = null,
-        .class_name = class_name,
-        .small_icon = icon,
-    };
-    // register
-    if (win.RegisterClassExW(&wc) == .null) {
-        print("Registering Class Failed\n", .{});
-        return;
-    }
-    // HWND
-    const hwnd = switch (win.CreateWindowExW(
-        0,
-        class_name,
-        window_title,
-        win.overlapped_window.bits.mask,
-        100,
-        100,
-        800,
-        600,
-        .null,
-        .null,
-        instance,
-        .null,
-    )) {
-        .null => {
-            print("Create Window Failed.\n", .{});
-            return;
-        },
-        else => |value| value,
-    };
-    // Show + Update
-    _ = win.ShowWindow(hwnd, .show);
-    _ = win.UpdateWindow(hwnd);
-
-    // Surface
-    // const surface_info = vk.Win32SurfaceCreateInfoKHR{
-    //     .s_type = .win32_surface_create_info_khr,
-    //     .p_next = null,
-    //     .flags = 0,
-    //     .hinstance = instance,
-    //     .hwnd = hwnd,
-    // };
-    // var surface: vk.SurfaceKHR = undefined;
-    // const result = vk.CreateWin32SurfaceKHR(instance, &surface_info, allo, &surface);
-    // switch (result) {
-    //     .success => {},
-    //     else => return error.FailedToCreateVulkanSurface,
-    // }
-
-    // // messages
-    // var msg: win.MSG = undefined;
-    // while (win.GetMessageW(&msg, .null, 0, 0) != 0) {
-    //     _ = win.TranslateMessage(&msg);
-    //     _ = win.DispatchMessageW(&msg);
-    // }
-    var i: usize = 0;
-    while (i < 1_000_000_000) : (i += 1) {}
+pub fn main() !void {
+    // Allocator
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allo = gpa.allocator();
+    defer std.debug.assert(.ok == gpa.deinit());
+    // engine
+    try engine.init(allo);
+    // defer engine.deinit();
 }

@@ -25,10 +25,18 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.linkLibC();
+    // Vulkan
     exe.root_module.addLibraryPath(b.path("Vulkan/Lib"));
-    exe.root_module.linkSystemLibrary("vulkan-1", .{});
+    switch (target.result.os.tag) {
+        .windows => exe.root_module.linkSystemLibrary("vulkan-1", .{}),
+        .linux => {},
+        .macos => {},
+        else => @panic("OS not supported!"),
+    }
     exe.addIncludePath(b.path("Vulkan/Include"));
+    // Packed Enum Set
     exe.root_module.addImport("PackedEnumSet", PackedEnumSet.module("PackedEnumSet"));
+    // Necessary Libs
     switch (target.result.os.tag) {
         .windows => {
             exe.linkSystemLibrary("kernel32");
