@@ -3,19 +3,20 @@ const print = std.debug.print;
 const Allocator = std.mem.Allocator;
 // imports
 const win = @import("windows\\windows.zig");
-const vk = @import("vulkan\\vulkan.zig");
-// const vk = @import("translated_vulkan.zig");
+// const vk1 = @import("vulkan\\vulkan.zig");
+// const vk2 = @import("vulkan\\translated_vulkan.zig");
+const vk3 = @import("vulkan\\vulkan_extern_fn.zig");
 // Extensions
 // TODO: convert extension names from containing a bunch of fields to containing a bunch of declarations instead
 const required_instance_extensions = [_][*:0]const u8{
     // vk.ExtensionNames.portability_enumeration,
-    vk.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+    // vk2.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
 };
 const required_device_extensions = [_][*:0]const u8{
-    vk.VK_KHR_SURFACE_EXTENSION_NAME,
-    vk.VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-        // vk.ExtensionNames.surface,
-        // vk.ExtensionNames.win32_surface,
+    // vk.VK_KHR_SURFACE_EXTENSION_NAME,
+    // vk.VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+    // vk.ExtensionNames.surface,
+    // vk.ExtensionNames.win32_surface,
 };
 // Fields
 // instance: vk.Instance,
@@ -147,19 +148,29 @@ fn createInstance(allo: Allocator) !void { // !vk.VkInstance {
     //     .apiVersion = vk.VK_MAKE_API_VERSION(0, 1, 0, 0),
     // };
     // _ = app_info;
-    // var n_props: u32 = 0;
-    // _ = vk.vkEnumerateInstanceExtensionProperties(null, &n_props, null);
-    // print("# of Props: {}\n", .{n_props});
-    // vkEnumerateInstanceExtensionProperties(pLayerName: [*c]const u8, pPropertyCount: [*c]u32, pProperties: [*c]VkExtensionProperties) VkResult;
-    // enumerateInstanceExtensionProperties(p_layer_name: [*c]const u8, p_property_count: [*c]u32, p_properties: [*c]ExtensionProperties) Result;
-    // var n_props: u32 = 0;
-    // _ = vk.enumerateInstanceExtensionProperties(null, &n_props, null);
-    // print("# Of Props: {}\n", .{n_props});
 
-    // New Way:
-    var n_props: u32 = 0;
-    _ = vk.enumerateInstanceExtensionProperties(null, &n_props, null); // changing the name means i cant use this - whaaaat
-    print("# of Props: {}\n", .{n_props});
+    // Comparing types of each fn
+    // const eiep1 = vk1.vkEnumerateInstanceExtensionProperties;
+    // print("{s}\n", .{@typeName(@TypeOf(eiep1))});
+    // const eiep2 = vk2.vkEnumerateInstanceExtensionProperties;
+    // print("{s}\n", .{@typeName(@TypeOf(eiep2))});
+    // const ep1 = @TypeOf(vk1.ExtensionProperties);
+    // print("{s}\n", .{@typeName(ep1)});
+    // const ep2 = @TypeOf(vk2.VkExtensionProperties);
+    // print("{s}\n", .{@typeName(ep2)});
+
+    // works - no symbol link error
+    // const eiep3 = vk3.enumerateInstanceExtensionProperties;
+    // print("{s}\n", .{@typeName(@TypeOf(eiep3))});
+
+    // fn ([*c]const u8, [*c]u32, [*c]translated_vulkan.struct_VkExtensionProperties) callconv(.c) c_int
+    // fn ([*c]const u8, [*c]u32, [*c]vulkan.vulkan.ExtensionProperties) callconv(.c) vulkan.vulkan.Result
+
+    // // New Way:
+    // var n_props: u32 = 0;
+    // _ = vk3.enumerateInstanceExtensionProperties(null, &n_props, null); // changing the name means i cant use this - whaaaat
+    // print("# of Props: {}\n", .{n_props});
+
     // New way = write old name - write new name underneath it for translated vulkan to work
 
     // const create_info = vk.InstanceCreateInfo{
