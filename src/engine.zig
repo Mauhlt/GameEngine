@@ -3,14 +3,13 @@ const print = std.debug.print;
 const Allocator = std.mem.Allocator;
 // imports
 const win = @import("windows\\windows.zig");
-// const vk1 = @import("vulkan\\vulkan.zig");
-// const vk2 = @import("vulkan\\translated_vulkan.zig");
-const vk3 = @import("vulkan\\vulkan_extern_fn.zig");
+const vk = @import("vulkan\\vulkan.zig");
+const QFI = @import("QueueFamilyIndices.zig");
 // Extensions
 // TODO: convert extension names from containing a bunch of fields to containing a bunch of declarations instead
 const required_instance_extensions = [_][*:0]const u8{
-    // vk.ExtensionNames.portability_enumeration,
-    // vk2.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+    vk.ExtensionName.win32_surface,
+    vk.ExtensionName.surface,
 };
 const required_device_extensions = [_][*:0]const u8{
     // vk.VK_KHR_SURFACE_EXTENSION_NAME,
@@ -18,55 +17,24 @@ const required_device_extensions = [_][*:0]const u8{
     // vk.ExtensionNames.surface,
     // vk.ExtensionNames.win32_surface,
 };
+const GameEngine = @This();
 // Fields
-// instance: vk.Instance,
+window: WINDOW_HANDLE,
+instance: vk.Instance,
+physical_device: vk.PhysicalDevice,
 
-pub fn init(allo: Allocator) !void { // @This() {
+pub fn init(allo: Allocator) !GameEngine {
+    var self: GameEngine = undefined;
     // Window Handle
-    var win_han = try initWindow();
-    defer deinitWindow(&win_han);
+    self.window = try initWindow();
     // Vulkan Handle
-    try initVulkan(allo);
-
-    // // Surface
-    // const surface_info = vk.Win32SurfaceCreateInfoKHR{
-    //     .s_type = .win32_surface_create_info_khr,
-    //     .p_next = null,
-    //     .flags = 0,
-    //     .hinstance = win_han.instance,
-    //     .hwnd = win_han.hwnd,
-    // };
-    // var surface: vk.SurfaceKHR = undefined;
-    // const result = vk.createWin32SurfaceKhr(
-    //     win_han.instance,
-    //     &surface_info,
-    //     allo,
-    //     &surface,
-    // );
-    // switch (result) {
-    //     .success => {},
-    //     else => return error.FailedToCreateVulkanSurface,
-    // }
-
-    // Show + Update: TODO: ABSTRACT THESE FUNCTIONS TO SHOW/UPDATE regardless of os
-    // _ = win.ShowWindow(win_han.hwnd, .show);
-    // _ = win.UpdateWindow(win_han.hwnd); // don't think I need this
-
-    // TODO: messages - Should be turned into a pollevents type of thing for each os
-    // var msg: win.MSG = undefined;
-    // TODO: Turn this into a core loop
-    // while (win.GetMessageW(&msg, .null, 0, 0) != 0) {
-    //     _ = win.TranslateMessage(&msg);
-    //     _ = win.DispatchMessageW(&msg);
-    // }
-
-    // return .{
-    //     .instance = instance,
-    // };
+    try self.initVulkan(allo);
+    return self;
 }
 
-pub fn deinit(self: *@This()) void {
-    _ = self;
+pub fn deinit(self: *GameEngine) void {
+    vk.destroyInstance(self.instance, null);
+    self.deinitWindow();
 }
 
 const WINDOW_HANDLE = struct {
@@ -123,62 +91,113 @@ fn initWindow() !WINDOW_HANDLE {
     };
 }
 
-fn deinitWindow(window_handle: *WINDOW_HANDLE) void {
+fn deinitWindow(self: *GameEngine) void {
     _ = win.UnregisterClassW(
-        window_handle.window_title,
-        window_handle.instance,
+        self.window.window_title,
+        self.window.instance,
     );
 }
 
-fn initVulkan(allo: Allocator) !void {
-    try createInstance(allo);
+fn initVulkan(self: *GameEngine, allo: Allocator) !void {
+    _ = allo;
+    self.instance = try createInstance();
+    self.physical_device = try self.pickPhysicalDevice();
 }
 
-fn createInstance(allo: Allocator) !void { // !vk.VkInstance {
-    _ = allo;
+fn createInstance() !vk.Instance {
+    // app info
+    const app_info = vk.ApplicationInfo{
+        .p_application_name = "Curr App",
+        .application_version = vk.makeApiVersion(0, 1, 0, 0),
+        .p_engine_name = "No Engine",
+        .engine_version = vk.makeApiVersion(0, 1, 0, 0),
+        .api_version = vk.makeApiVersion(0, 1, 0, 0),
+    };
+    // get extensions
+    var n_exts: u32 = 0;
+    _ = vk.enumerateInstanceExtensionProperties(null, &n_exts, null);
+    var exts: [64]vk.ExtensionProperties = undefined;
+    _ = vk.enumerateInstanceExtensionProperties(null, &n_exts, &exts);
+    // check that all required instance extensions are supported
+    outer: for (required_instance_extensions) |req_ext| {
+        const name1 = std.mem.span(req_ext);
+        for (exts[0..n_exts]) |extension| {
+            const len = std.mem.indexOfScalar(u8, &extension.extension_name, 0).?;
+            const name2 = extension.extension_name[0..len];
+            if (std.mem.eql(u8, name1, name2)) continue :outer;
+        }
+        print("Not Found: {s}\n", .{name1});
+        return error.RequiredExtensionNotSupported;
+    }
+    // create info
+    const create_info = vk.InstanceCreateInfo{
+        .p_application_info = &app_info,
+        .flags = if (@import("builtin").os.tag == .macos) //
+            .init(.enumerate_portability_bit_khr) //
+        else //
+            .initEmpty(),
+        .enabled_layer_count = 0,
+        .pp_enabled_layer_names = null,
+        .enabled_extension_count = n_exts,
+        .pp_enabled_extension_names = @ptrCast(&required_instance_extensions),
+    };
+    // create instance
+    var instance: vk.Instance = .null;
+    const result = vk.createInstance(&create_info, null, &instance);
+    print("Result: {s}\n", .{@tagName(result)});
+    return instance;
+}
 
-    // Old Way:
-    // const app_info = vk.VkApplicationInfo{
-    //     .sType = vk.VK_STRUCTURE_TYPE_APPLICATION_INFO,
-    //     .pNext = null,
-    //     .pApplicationName = "Curr App",
-    //     .applicationVersion = vk.VK_MAKE_API_VERSION(0, 1, 0, 0),
-    //     .pEngineName = "No Engine",
-    //     .engineVersion = vk.VK_MAKE_API_VERSION(0, 1, 0, 0),
-    //     .apiVersion = vk.VK_MAKE_API_VERSION(0, 1, 0, 0),
-    // };
-    // _ = app_info;
+fn pickPhysicalDevice(self: *GameEngine) !vk.PhysicalDevice {
+    var n_devices: u32 = undefined;
+    _ = vk.enumeratePhysicalDevices(self.instance, &n_devices, null);
+    print("# of Physical Devices: {}\n", .{n_devices});
+    if (n_devices == 0) return error.FoundNoPhysicalDevice;
+    var physical_devices: [16]vk.PhysicalDevice = undefined;
+    _ = vk.enumeratePhysicalDevices(self.instance, &n_devices, &physical_devices);
 
-    // Comparing types of each fn
-    // const eiep1 = vk1.vkEnumerateInstanceExtensionProperties;
-    // print("{s}\n", .{@typeName(@TypeOf(eiep1))});
-    // const eiep2 = vk2.vkEnumerateInstanceExtensionProperties;
-    // print("{s}\n", .{@typeName(@TypeOf(eiep2))});
-    // const ep1 = @TypeOf(vk1.ExtensionProperties);
-    // print("{s}\n", .{@typeName(ep1)});
-    // const ep2 = @TypeOf(vk2.VkExtensionProperties);
-    // print("{s}\n", .{@typeName(ep2)});
+    for (physical_devices[0..n_devices]) |physical_device| {
+        if (isDeviceSuitable(physical_device)) return physical_device;
+    } else return error.FoundNoSuitablePhysicalDevice;
+}
 
-    // works - no symbol link error
-    // const eiep3 = vk3.enumerateInstanceExtensionProperties;
-    // print("{s}\n", .{@typeName(@TypeOf(eiep3))});
+// simplest
+fn isDeviceSuitable(device: vk.PhysicalDevice) bool {
+    var indices = QFI.init(device);
+    return indices.isComplete();
+}
 
-    // fn ([*c]const u8, [*c]u32, [*c]translated_vulkan.struct_VkExtensionProperties) callconv(.c) c_int
-    // fn ([*c]const u8, [*c]u32, [*c]vulkan.vulkan.ExtensionProperties) callconv(.c) vulkan.vulkan.Result
+// better
+fn isDeviceSuitable1(device: vk.PhysicalDevice) bool {
+    var props: vk.PhysicalDeviceProperties2 = undefined;
+    vk.getPhysicalDeviceProperties(device, &props);
+    var feats: vk.PhysicalDeviceFeatures2 = undefined;
+    vk.getPhysicalDeviceFeatures2(device, &feats);
+    return props.deviceType == .device_type_discrete_gpu and (feats.geometryShader > 0);
+}
 
-    // // New Way:
-    // var n_props: u32 = 0;
-    // _ = vk3.enumerateInstanceExtensionProperties(null, &n_props, null); // changing the name means i cant use this - whaaaat
-    // print("# of Props: {}\n", .{n_props});
-
-    // New way = write old name - write new name underneath it for translated vulkan to work
-
-    // const create_info = vk.InstanceCreateInfo{
-    //     .p_application_info = &app_info,
-    //     .enabled_extension_count = 0,
-    //     .pp_enabled_extension_names = null,
-    //     .enabled_layer_count = 0,
-    //     .pp_enabled_layer_names = null,
-    // };
-    // _ = create_info;
+// complex
+fn ratePhysicalDeviceSuitability(device: vk.PhysicalDevice) i32 {
+    var score: i32 = 0;
+    // props + feats
+    var props: vk.PhysicalDeviceProperties2 = undefined;
+    vk.getPhysicalDeviceProperties(device, &props);
+    var feats: vk.PhysicalDeviceFeatures2 = undefined;
+    vk.getPhysicalDeviceFeatures2(device, &feats);
+    // device type
+    score += switch (device.deviceType) {
+        .discrete_gpu => 1000,
+        .integrated_gpu => 100,
+        .virtual_gpu => 10,
+        else => 0,
+    };
+    // dims - max possible txeture size
+    score += props.limits.max_image_dimension_2d;
+    score += props.limits.max_image_dimension_3d;
+    // ensure shader types
+    if (!feats.geometry_shader) {
+        return 0;
+    }
+    // score
+    return score;
 }

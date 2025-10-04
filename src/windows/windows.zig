@@ -9,15 +9,20 @@ const ClassStyles = @import("windows_enums.zig").ClassStyles;
 pub const redraw = @import("windows_enums.zig").redraw;
 // Types
 pub const ATOM = @import("windows_types.zig").ATOM;
+pub const DWORD = @import("windows_types.zig").DWORD;
 pub const HBRUSH = @import("windows_types.zig").HBRUSH;
 pub const HCURSOR = @import("windows_types.zig").HCURSOR;
+pub const HANDLE = @import("windows_types.zig").HANDLE;
 pub const HICON = @import("windows_types.zig").HICON;
 pub const HINSTANCE = @import("windows_types.zig").HINSTANCE;
 pub const HMENU = @import("windows_types.zig").HMENU;
 pub const HMODULE = @import("windows_types.zig").HMODULE;
+pub const HMONITOR = @import("windows_types.zig").HMONITOR;
 pub const HWND = @import("windows_types.zig").HWND;
+pub const LPCWSTR = @import("windows_types.zig").LPCWSTR;
 pub const LRESULT = @import("windows_types.zig").LRESULT;
 pub const LPARAM = @import("windows_types.zig").LPARAM;
+pub const SECURITY_ATTRIBUTES = @import("windows_types.zig").SECURITY_ATTRIBUTES;
 pub const WPARAM = @import("windows_types.zig").WPARAM;
 // Fns
 pub const CreateWindowExW = @import("windows_fns.zig").CreateWindowExW;

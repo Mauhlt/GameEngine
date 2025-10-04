@@ -1,6 +1,6 @@
 const std = @import("std");
 const print = std.debug.print;
-const engine = @import("engine.zig");
+const Engine = @import("engine.zig");
 
 pub fn main() !void {
     // Allocator
@@ -8,6 +8,7 @@ pub fn main() !void {
     const allo = gpa.allocator();
     defer std.debug.assert(.ok == gpa.deinit());
     // engine
-    try engine.init(allo);
+    var engine = try Engine.init(allo);
+    defer engine.deinit();
     // defer engine.deinit();
 }

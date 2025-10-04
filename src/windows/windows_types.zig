@@ -2,11 +2,16 @@ pub const ATOM = enum(u16) {
     null = 0,
     _,
 };
+pub const DWORD = u32;
 pub const HBRUSH = enum(isize) {
     null = 0,
     _,
 };
 pub const HCURSOR = enum(isize) {
+    null = 0,
+    _,
+};
+pub const HANDLE = enum(usize) {
     null = 0,
     _,
 };
@@ -26,6 +31,10 @@ pub const HMODULE = enum(isize) {
     null = 0,
     _,
 };
+pub const HMONITOR = enum(isize) {
+    null = 0,
+    _,
+};
 pub const HWND = enum(isize) {
     null = 0,
     _,
@@ -38,7 +47,13 @@ pub const LPARAM = enum(isize) {
     null = 0,
     _,
 };
+pub const LPCSTR = [*:0]const u8;
+pub const LPCWSTR = [*:0]const u16;
 pub const LPVOID = enum(isize) {
+    null = 0,
+    _,
+};
+pub const SECURITY_ATTRIBUTES = enum(usize) {
     null = 0,
     _,
 };
