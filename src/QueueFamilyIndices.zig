@@ -1,4 +1,3 @@
-const std = @import("std");
 const vk = @import("vulkan\\vulkan.zig");
 const QueueFamilyIndices = @This();
 
@@ -15,10 +14,9 @@ pub fn init(
     var queues: [32]vk.QueueFamilyProperties = undefined;
     _ = vk.getPhysicalDeviceQueueFamilyProperties(physical_device, &n_queues, &queues);
     for (queues[0..n_queues], 0..) |queue, i| {
-        std.debug.print("{any}", .{queue.queue_flags});
-        // if (queue.queue_flags & .queue_graphics_bit) {
-        indices.graphics_family = @truncate(i);
-        // }
+        if (queue.queue_flags.contains(.graphics_bit)) {
+            indices.graphics_family = @truncate(i);
+        }
     }
     return indices;
 }

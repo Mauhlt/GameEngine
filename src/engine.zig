@@ -17,22 +17,26 @@ const required_device_extensions = [_][*:0]const u8{
     // vk.ExtensionNames.surface,
     // vk.ExtensionNames.win32_surface,
 };
-const GameEngine = @This();
+const Engine = @This();
 // Fields
 window: WINDOW_HANDLE,
 instance: vk.Instance,
 physical_device: vk.PhysicalDevice,
+logical_device: vk.Device,
+graphics_queue: vk.Queue,
 
-pub fn init(allo: Allocator) !GameEngine {
-    var self: GameEngine = undefined;
-    // Window Handle
+pub fn init(allo: Allocator) !Engine {
+    _ = allo;
+    var self: Engine = undefined;
     self.window = try initWindow();
-    // Vulkan Handle
-    try self.initVulkan(allo);
+    self.instance = try createInstance();
+    self.physical_device = try self.pickPhysicalDevice();
+    self.logical_device = try self.createLogicalDevice();
     return self;
 }
 
-pub fn deinit(self: *GameEngine) void {
+pub fn deinit(self: *Engine) void {
+    vk.destroyDevice(self.logical_device, null);
     vk.destroyInstance(self.instance, null);
     self.deinitWindow();
 }
@@ -91,17 +95,11 @@ fn initWindow() !WINDOW_HANDLE {
     };
 }
 
-fn deinitWindow(self: *GameEngine) void {
+fn deinitWindow(self: *Engine) void {
     _ = win.UnregisterClassW(
         self.window.window_title,
         self.window.instance,
     );
-}
-
-fn initVulkan(self: *GameEngine, allo: Allocator) !void {
-    _ = allo;
-    self.instance = try createInstance();
-    self.physical_device = try self.pickPhysicalDevice();
 }
 
 fn createInstance() !vk.Instance {
@@ -131,28 +129,29 @@ fn createInstance() !vk.Instance {
     }
     // create info
     const create_info = vk.InstanceCreateInfo{
+        .flags = switch (@import("builtin").os.tag) {
+            .macos => .init(.enumerate_portability_bit_khr),
+            else => .initEmpty(),
+        },
         .p_application_info = &app_info,
-        .flags = if (@import("builtin").os.tag == .macos) //
-            .init(.enumerate_portability_bit_khr) //
-        else //
-            .initEmpty(),
         .enabled_layer_count = 0,
         .pp_enabled_layer_names = null,
-        .enabled_extension_count = n_exts,
-        .pp_enabled_extension_names = @ptrCast(&required_instance_extensions),
+        .enabled_extension_count = required_instance_extensions.len,
+        .pp_enabled_extension_names = &required_instance_extensions,
     };
     // create instance
     var instance: vk.Instance = .null;
-    const result = vk.createInstance(&create_info, null, &instance);
-    print("Result: {s}\n", .{@tagName(result)});
-    return instance;
+    return switch (vk.createInstance(&create_info, null, &instance)) {
+        .success => instance,
+        else => error.FailedToCreateInstance,
+    };
 }
 
-fn pickPhysicalDevice(self: *GameEngine) !vk.PhysicalDevice {
+fn pickPhysicalDevice(self: *const Engine) !vk.PhysicalDevice {
     var n_devices: u32 = undefined;
     _ = vk.enumeratePhysicalDevices(self.instance, &n_devices, null);
-    print("# of Physical Devices: {}\n", .{n_devices});
     if (n_devices == 0) return error.FoundNoPhysicalDevice;
+
     var physical_devices: [16]vk.PhysicalDevice = undefined;
     _ = vk.enumeratePhysicalDevices(self.instance, &n_devices, &physical_devices);
 
@@ -200,4 +199,33 @@ fn ratePhysicalDeviceSuitability(device: vk.PhysicalDevice) i32 {
     }
     // score
     return score;
+}
+
+fn createLogicalDevice(self: *Engine) !vk.Device {
+    const indices = QFI.init(self.physical_device);
+    var priority: f32 = 1.0;
+    const queue_create_infos = [_]vk.DeviceQueueCreateInfo{
+        .{
+            .queue_family_index = indices.graphics_family.?,
+            .queue_count = 1,
+            .p_queue_priorities = @ptrCast(&priority),
+        },
+    };
+    var feats: vk.PhysicalDeviceFeatures = .{}; // has version 2
+    const create_info: vk.DeviceCreateInfo = .{
+        .p_queue_create_infos = &queue_create_infos,
+        .queue_create_info_count = @truncate(queue_create_infos.len),
+        .p_enabled_features = &feats,
+        .enabled_extension_count = 0,
+        .enabled_layer_count = 0,
+        .pp_enabled_layer_names = null,
+    };
+
+    var logical_device: vk.Device = .null;
+    switch (vk.createDevice(self.physical_device, &create_info, null, &logical_device)) {
+        .success => logical_device,
+        else => return error.FailedToCreateLogicalDevice,
+    }
+    vk.getDeviceQueue(logical_device, indices.graphics_family.?, 0, &self.graphics_queue); // has version 2
+    return logical_device;
 }
