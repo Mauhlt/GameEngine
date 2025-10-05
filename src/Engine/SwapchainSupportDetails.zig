@@ -1,6 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const vk = @import("vulkan\\vulkan.zig");
+const vk = @import("..\\vulkan\\vulkan.zig");
 const SwapchainSupportDetails = @This();
 // has version 2
 capabilities: vk.SurfaceCapabilitiesKHR,

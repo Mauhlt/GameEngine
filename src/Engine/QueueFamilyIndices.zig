@@ -1,4 +1,4 @@
-const vk = @import("vulkan\\vulkan.zig");
+const vk = @import("..\\vulkan\\vulkan.zig");
 const QueueFamilyIndices = @This();
 
 graphics_family: ?u32 = null,

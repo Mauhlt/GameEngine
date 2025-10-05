@@ -32,6 +32,10 @@ images: [3]vk.Image = [_]vk.Image{.null} ** 3,
 views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
 format: vk.Format = undefined,
 extent: vk.Extent2D = undefined,
+// pipeline
+render_pass: vk.RenderPass = .null,
+pipeline_layout: vk.PipelineLayout = .null,
+pipeline: vk.Pipeline = .null,
 
 pub fn init(allo: Allocator) !Engine {
     var self: Engine = .{};
@@ -43,14 +47,20 @@ pub fn init(allo: Allocator) !Engine {
     self.swapchain = try self.createSwapchain();
     self.extent = try self.createSwapchainExtent();
     self.format = try self.createSwapchainFormat();
+    // arrays
     try self.createSwapchainImages(&self.n_images, null);
     try self.createSwapchainImages(&self.n_images, &self.images);
     try self.createSwapchainImageViews(&self.views);
-    try createGraphicsPipeline(allo);
+    // pipeline
+    self.render_pass = try self.createRenderPass();
+    self.pipeline_layout = try self.createGraphicsPipelineLayout();
+    self.pipeline = try self.createGraphicsPipeline(allo);
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
+    vk.destroyPipeline(self.logical_device, self.pipeline, null);
+    vk.destroyPipelineLayout(self.logical_device, self.pipeline_layout, null);
     for (0..self.n_images) |i| {
         vk.destroyImageView(self.logical_device, self.views[i], null);
     }
@@ -412,11 +422,13 @@ fn createSwapchainImageViews(
                 .b = .identity,
                 .a = .identity,
             },
-            .aspect_mask = .color_bit,
-            .base_mip_level = 0,
-            .lewel_count = 1,
-            .base_array_layer = 0,
-            .layer_count = 1,
+            .subresource_range = .{
+                .aspect_mask = .init(.color_bit),
+                .base_mip_level = 0,
+                .level_count = 1,
+                .base_array_layer = 0,
+                .layer_count = 1,
+            },
         };
         var view = views[i];
         switch (vk.createImageView(
@@ -431,16 +443,251 @@ fn createSwapchainImageViews(
     }
 }
 
-fn createGraphicsPipeline(allo: Allocator) void {
-    // should i even do this or just embed the files
-    const vert_shader_code = readFile(allo, "..\\shaders\\vert.spv");
-    const frag_shader_code = readFile(allo, "..\\shaders\\frag.spv");
-    _ = vert_shader_code;
-    _ = frag_shader_code;
+fn allocReadFile(allo: Allocator, filename: []const u8) ![]const u8 {
+    // get basepath
+    var buf1: [1024]u8 = undefined;
+    const exe_path = try std.fs.selfExePath(&buf1);
+    const basepath = exe_path[0..std.mem.indexOf(u8, exe_path, "zig-out").?];
+    // get shaders dir
+    const shaders = try std.fs.path.join(allo, &.{ basepath, "src", "Shaders" });
+    defer allo.free(shaders);
+    // get shader specifically
+    const read_filepath = try std.fs.path.join(allo, &.{ shaders, filename });
+    defer allo.free(read_filepath);
+    // read file
+    const rfile = try std.fs.openFileAbsolute(read_filepath, .{});
+    defer rfile.close();
+    const size = (try rfile.stat()).size;
+    const buffer: []u8 = try allo.alloc(u8, size);
+    _ = try rfile.readAll(buffer);
+    // return data
+    return buffer;
 }
 
-fn readFile(allo: Allocator, filename: []const u8) []const u8 {
-    _ = allo;
-    var wfile = std.fs.cwd().openFile(filename, .{});
-    defer wfile.close();
+fn createShaderModule(self: *Engine, code: []const u8) !vk.ShaderModule {
+    const create_info = vk.ShaderModuleCreateInfo{
+        .code_size = code.len,
+        .p_code = @ptrCast(@alignCast(code)),
+    };
+    var shader_module: vk.ShaderModule = .null;
+    return switch (vk.createShaderModule(self.logical_device, &create_info, null, &shader_module)) {
+        .success => shader_module,
+        else => error.FailedToCreateShaderModule,
+    };
+}
+
+fn createRenderPass(self: *Engine) !vk.RenderPass {
+    const color_attachment = vk.AttachmentDescription{
+        .format = self.format,
+        .samples = .@"1_bit",
+        .load_op = .clear,
+        .store_op = .store,
+        .stencil_load_op = .dont_care,
+        .stencil_store_op = .dont_care,
+        .initial_layout = .undefined,
+        .final_layout = .present_src_khr,
+    };
+
+    // has version 2
+    const color_attachment_ref = vk.AttachmentReference{
+        .attachment = 0,
+        .layout = .color_attachment_optimal,
+    };
+
+    // has version 2
+    const subpass = vk.SubpassDescription{
+        .pipeline_bind_point = .graphics,
+        .color_attachment_count = 1,
+        .p_color_attachments = &color_attachment_ref,
+    };
+
+    // has version 2
+    const create_info = vk.RenderPassCreateInfo{
+        .attachment_count = 1,
+        .p_attachments = &color_attachment,
+        .subpass_count = 1,
+        .p_subpasses = &subpass,
+    };
+
+    // has version 2
+    var render_pass: vk.RenderPass = .null;
+    return switch (vk.createRenderPass(
+        self.logical_device,
+        &create_info,
+        null,
+        &render_pass,
+    )) {
+        .success => render_pass,
+        else => return error.FailedToCreateRenderPass,
+    };
+}
+
+fn createGraphicsPipelineLayout(self: *Engine) !vk.PipelineLayout {
+    const create_info = vk.PipelineLayoutCreateInfo{
+        .set_layout_count = 0,
+        .p_set_layouts = null,
+        .push_constant_range_count = 0,
+        .p_push_constant_ranges = null,
+    };
+
+    var layout: vk.PipelineLayout = .null;
+    return switch (vk.createPipelineLayout(
+        self.logical_device,
+        &create_info,
+        null,
+        &layout,
+    )) {
+        .success => layout,
+        else => error.FailedToCreatePipelineLayout,
+    };
+}
+
+fn createGraphicsPipeline(self: *Engine, allo: Allocator) !vk.Pipeline {
+    // read files - prob should embed them for better performance
+    const vert_spv = try allocReadFile(allo, "tri.vert.spv");
+    defer allo.free(vert_spv);
+
+    const frag_spv = try allocReadFile(allo, "tri.frag.spv");
+    defer allo.free(frag_spv);
+    // create shader modules
+    const vert_sm = try self.createShaderModule(vert_spv);
+    defer vk.destroyShaderModule(self.logical_device, vert_sm, null);
+
+    const frag_sm = try self.createShaderModule(frag_spv);
+    defer vk.destroyShaderModule(self.logical_device, vert_sm, null);
+
+    const vert_shader_stage_info = vk.PipelineShaderStageCreateInfo{
+        .stage = .vertex_bit,
+        .module = vert_sm,
+        .p_name = "main",
+    };
+
+    const frag_shader_stage_info = vk.PipelineShaderStageCreateInfo{
+        .stage = .fragment_bit,
+        .module = frag_sm,
+        .p_name = "main",
+    };
+
+    const shader_stages = [_]vk.PipelineShaderStageCreateInfo{
+        vert_shader_stage_info,
+        frag_shader_stage_info,
+    };
+
+    const vertex_input_info = vk.PipelineVertexInputStateCreateInfo{
+        .vertex_binding_description_count = 0,
+        .p_vertex_binding_descriptions = null,
+        .vertex_attribute_description_count = 0,
+        .p_vertex_attribute_descriptions = null,
+    };
+
+    const input_assembly = vk.PipelineInputAssemblyStateCreateInfo{
+        .topology = .triangle_list,
+        .primitive_restart_enable = .false,
+    };
+
+    const viewport = vk.Viewport{
+        .x = 0,
+        .y = 0,
+        .width = @floatFromInt(self.extent.width),
+        .height = @floatFromInt(self.extent.height),
+        .min_depth = 0,
+        .max_depth = 1,
+    };
+
+    const scissor = vk.Rect2D{
+        .offset = .{
+            .x = 0,
+            .y = 0,
+        },
+        .extent = self.extent,
+    };
+
+    const dynamic_states = [_]vk.DynamicState{
+        .viewport,
+        .scissor,
+    };
+
+    const dynamic_state = vk.PipelineDynamicStateCreateInfo{
+        .dynamic_state_count = @truncate(dynamic_states.len),
+        .p_dynamic_states = &dynamic_states,
+    };
+
+    const viewport_state = vk.PipelineViewportStateCreateInfo{
+        .viewport_count = 1,
+        .p_viewports = &viewport,
+        .scissor_count = 1,
+        .p_scissors = &scissor,
+    };
+
+    const rasterizer = vk.PipelineRasterizationStateCreateInfo{
+        .depth_clamp_enable = .false,
+        .rasterizer_discard_enable = .false,
+        .polygon_mode = .fill,
+        .line_width = 1,
+        .cull_mode = .init(.back_bit),
+        .front_face = .clockwise,
+        .depth_bias_enable = .false,
+        .depth_bias_constant_factor = 0,
+        .depth_bias_clamp = 0,
+        .depth_bias_slope_factor = 0,
+    };
+
+    const multisampling = vk.PipelineMultisampleStateCreateInfo{
+        .sample_shading_enable = .false,
+        .rasterization_samples = .@"1_bit",
+        .min_sample_shading = 1,
+        .p_sample_mask = null,
+        .alpha_to_coverage_enable = .false,
+        .alpha_to_one_enable = .false,
+    };
+
+    const color_blend_attachment = vk.PipelineColorBlendAttachmentState{
+        .color_write_mask = .initMany(&.{ .r_bit, .g_bit, .b_bit, .a_bit }),
+        .blend_enable = .true,
+        .src_color_blend_factor = .src_alpha,
+        .dst_color_blend_factor = .one_minus_src_alpha,
+        .color_blend_op = .add,
+        .src_alpha_blend_factor = .one,
+        .dst_alpha_blend_factor = .zero,
+        .alpha_blend_op = .add,
+    };
+
+    const color_blending = vk.PipelineColorBlendStateCreateInfo{
+        .logic_op_enable = .false,
+        .logic_op = .copy,
+        .attachment_count = 1,
+        .p_attachments = &color_blend_attachment,
+        .blend_constants = [4]f32{ 0, 0, 0, 0 },
+    };
+
+    const create_info = vk.GraphicsPipelineCreateInfo{
+        .stage_count = @truncate(shader_stages.len),
+        .p_stages = &shader_stages,
+        .p_vertex_input_state = &vertex_input_info,
+        .p_input_assembly_state = &input_assembly,
+        .p_viewport_state = &viewport_state,
+        .p_rasterization_state = &rasterizer,
+        .p_multisample_state = &multisampling,
+        .p_depth_stencil_state = null,
+        .p_color_blend_state = &color_blending,
+        .p_dynamic_state = &dynamic_state,
+        .layout = self.pipeline_layout,
+        .render_pass = self.render_pass,
+        .subpass = 0,
+        .base_pipeline_handle = .null,
+        .base_pipeline_index = -1,
+    };
+
+    var pipeline: vk.Pipeline = .null;
+    return switch (vk.createGraphicsPipelines(
+        self.logical_device,
+        .null,
+        1,
+        &create_info,
+        null,
+        &pipeline,
+    )) {
+        .success => pipeline,
+        else => error.FailedToCreateGraphicsPipeline,
+    };
 }
