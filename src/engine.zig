@@ -3,6 +3,7 @@ const print = std.debug.print;
 const Allocator = std.mem.Allocator;
 // imports
 const win = @import("windows\\windows.zig");
+const WINDOW_HANDLE = @import("window_handle.zig");
 const vk = @import("vulkan\\vulkan.zig");
 const QFI = @import("QueueFamilyIndices.zig");
 // Extensions
@@ -12,24 +13,25 @@ const required_instance_extensions = [_][*:0]const u8{
     vk.ExtensionName.surface,
 };
 const required_device_extensions = [_][*:0]const u8{
-    // vk.VK_KHR_SURFACE_EXTENSION_NAME,
-    // vk.VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-    // vk.ExtensionNames.surface,
-    // vk.ExtensionNames.win32_surface,
+    vk.ExtensionName.swapchain,
 };
 const Engine = @This();
 // Fields
-window: WINDOW_HANDLE,
-instance: vk.Instance,
-physical_device: vk.PhysicalDevice,
-logical_device: vk.Device,
-graphics_queue: vk.Queue,
+window: WINDOW_HANDLE = undefined,
+instance: vk.Instance = .null,
+surface: vk.SurfaceKHR = .null,
+physical_device: vk.PhysicalDevice = .null,
+logical_device: vk.Device = .null,
+// queues
+graphics_queue: vk.Queue = .null,
+present_queue: vk.Queue = .null,
 
 pub fn init(allo: Allocator) !Engine {
     _ = allo;
-    var self: Engine = undefined;
+    var self: Engine = .{};
     self.window = try initWindow();
     self.instance = try createInstance();
+    self.surface = try self.createSurface();
     self.physical_device = try self.pickPhysicalDevice();
     self.logical_device = try self.createLogicalDevice();
     return self;
@@ -37,22 +39,17 @@ pub fn init(allo: Allocator) !Engine {
 
 pub fn deinit(self: *Engine) void {
     vk.destroyDevice(self.logical_device, null);
+    vk.destroySurfaceKHR(self.instance, self.surface, null);
     vk.destroyInstance(self.instance, null);
     self.deinitWindow();
 }
-
-const WINDOW_HANDLE = struct {
-    instance: win.HINSTANCE,
-    window_title: [*:0]const u16,
-    hwnd: win.HWND,
-};
 
 fn initWindow() !WINDOW_HANDLE {
     // TODO: Switch based on os
     const instance = win.GetModuleHandleW(null);
     // wide strings
     const class_name = std.unicode.utf8ToUtf16LeStringLiteral("ZigWindowClass");
-    const window_title = std.unicode.utf8ToUtf16LeStringLiteral("Zig Unicode Window");
+    const title = std.unicode.utf8ToUtf16LeStringLiteral("Zig Unicode Window");
     // icons + cursors
     const icon = win.LoadIconW(.null, std.unicode.utf8ToUtf16LeStringLiteral("IDI_APPLICATION"));
     const cursor = win.LoadCursorW(.null, std.unicode.utf8ToUtf16LeStringLiteral("IDC_ARROW"));
@@ -74,7 +71,7 @@ fn initWindow() !WINDOW_HANDLE {
     const hwnd = switch (win.CreateWindowExW(
         0,
         class_name,
-        window_title,
+        title,
         win.overlapped_window.bits.mask,
         100,
         100,
@@ -90,14 +87,14 @@ fn initWindow() !WINDOW_HANDLE {
     };
     return .{
         .instance = instance,
-        .window_title = window_title,
+        .title = title,
         .hwnd = hwnd,
     };
 }
 
 fn deinitWindow(self: *Engine) void {
     _ = win.UnregisterClassW(
-        self.window.window_title,
+        self.window.title,
         self.window.instance,
     );
 }
@@ -147,23 +144,80 @@ fn createInstance() !vk.Instance {
     };
 }
 
+fn createSurface(self: *Engine) !vk.SurfaceKHR {
+    const create_info = vk.Win32SurfaceCreateInfoKHR{
+        .hwnd = self.window.hwnd,
+        .hinstance = self.window.instance,
+    };
+    var surface: vk.SurfaceKHR = .null;
+    return switch (vk.createWin32SurfaceKHR(self.instance, &create_info, null, &surface)) {
+        .success => surface,
+        else => error.FailedToCreateSurface,
+    };
+}
+
 fn pickPhysicalDevice(self: *const Engine) !vk.PhysicalDevice {
     var n_devices: u32 = undefined;
-    _ = vk.enumeratePhysicalDevices(self.instance, &n_devices, null);
+    switch (vk.enumeratePhysicalDevices(self.instance, &n_devices, null)) {
+        .success => {},
+        else => return error.FailedToEnumeratePhysicalDevices,
+    }
     if (n_devices == 0) return error.FoundNoPhysicalDevice;
+    print("# Of Devices: {}\n", .{n_devices});
 
     var physical_devices: [16]vk.PhysicalDevice = undefined;
-    _ = vk.enumeratePhysicalDevices(self.instance, &n_devices, &physical_devices);
+    switch (vk.enumeratePhysicalDevices(self.instance, &n_devices, &physical_devices)) {
+        .success => {},
+        else => return error.FailedToEnumeratePhysicalDevices,
+    }
 
     for (physical_devices[0..n_devices]) |physical_device| {
-        if (isDeviceSuitable(physical_device)) return physical_device;
-    } else return error.FoundNoSuitablePhysicalDevice;
+        const is_device_suitable = isDeviceSuitable(physical_device, self.surface);
+        print("Is Device Suitable: {}\n", .{is_device_suitable});
+        if (is_device_suitable) return physical_device;
+    }
+
+    return physical_devices[0];
+    // return error.FoundNoSuitablePhysicalDevice;
 }
 
 // simplest
-fn isDeviceSuitable(device: vk.PhysicalDevice) bool {
-    var indices = QFI.init(device);
-    return indices.isComplete();
+fn isDeviceSuitable(device: vk.PhysicalDevice, surface: vk.SurfaceKHR) bool {
+    const is_complete = !QFI.init(device, surface).isComplete();
+    const are_exts_supported = checkDeviceExtensionSupport(device);
+    return is_complete and are_exts_supported;
+}
+
+fn checkDeviceExtensionSupport(device: vk.PhysicalDevice) bool {
+    var n_exts: u32 = 0;
+    switch (vk.enumerateDeviceExtensionProperties(device, null, &n_exts, null)) {
+        .success => {},
+        else => return false,
+        // else => return error.FailedToEnumerateDeviceExtensionProperties,
+    }
+    var exts: [512]vk.ExtensionProperties = undefined;
+    switch (vk.enumerateDeviceExtensionProperties(device, null, &n_exts, &exts)) {
+        .success => {},
+        else => return false,
+        // else => return error.FailedToEnumerateDeviceExtensionProperties,
+    }
+
+    for (required_device_extensions) |req_ext| {
+        const name = std.mem.span(req_ext);
+        print("Name: {s}\n", .{name});
+    }
+    print("\n", .{});
+
+    for (required_instance_extensions) |req_ext| {
+        const name1 = std.mem.span(req_ext);
+        for (exts[0..n_exts]) |ext| {
+            const len = std.mem.indexOfScalar(u8, &ext.extension_name, 0).?;
+            const name2 = ext.extension_name[0..len];
+            if (std.mem.eql(u8, name1, name2)) return true;
+        }
+    }
+
+    return false;
 }
 
 // better
@@ -202,30 +256,42 @@ fn ratePhysicalDeviceSuitability(device: vk.PhysicalDevice) i32 {
 }
 
 fn createLogicalDevice(self: *Engine) !vk.Device {
-    const indices = QFI.init(self.physical_device);
+    const indices = QFI.init(self.physical_device, self.surface);
     var priority: f32 = 1.0;
+    // 2 for amd, 1 for nvidia
     const queue_create_infos = [_]vk.DeviceQueueCreateInfo{
         .{
             .queue_family_index = indices.graphics_family.?,
             .queue_count = 1,
             .p_queue_priorities = @ptrCast(&priority),
         },
+        .{
+            .queue_family_index = indices.present_family.?,
+            .queue_count = 1,
+            .p_queue_priorities = @ptrCast(&priority),
+        },
     };
     var feats: vk.PhysicalDeviceFeatures = .{}; // has version 2
+    const len: u32 = if (indices.present_family == indices.graphics_family) //
+        1 //
+    else //
+        @truncate(queue_create_infos.len);
     const create_info: vk.DeviceCreateInfo = .{
+        .queue_create_info_count = len,
         .p_queue_create_infos = &queue_create_infos,
-        .queue_create_info_count = @truncate(queue_create_infos.len),
         .p_enabled_features = &feats,
         .enabled_extension_count = 0,
+        .pp_enabled_extension_names = null,
         .enabled_layer_count = 0,
         .pp_enabled_layer_names = null,
     };
 
     var logical_device: vk.Device = .null;
-    switch (vk.createDevice(self.physical_device, &create_info, null, &logical_device)) {
-        .success => logical_device,
-        else => return error.FailedToCreateLogicalDevice,
-    }
-    vk.getDeviceQueue(logical_device, indices.graphics_family.?, 0, &self.graphics_queue); // has version 2
+    try switch (vk.createDevice(self.physical_device, &create_info, null, &logical_device)) {
+        .success => {},
+        else => error.FailedToCreateLogicalDevice,
+    };
+    // below has version 2
+    vk.getDeviceQueue(logical_device, indices.graphics_family.?, 0, &self.graphics_queue);
     return logical_device;
 }
