@@ -1,4 +1,4 @@
-const win = @import("windows\\windows.zig");
+const win = @import("..\\windows\\windows.zig");
 const WindowHandle = @This();
 
 instance: win.HINSTANCE,

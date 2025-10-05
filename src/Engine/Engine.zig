@@ -2,13 +2,12 @@ const std = @import("std");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
 // imports
-const win = @import("windows\\windows.zig");
+const win = @import("..\\windows\\windows.zig");
 const WINDOW_HANDLE = @import("window_handle.zig");
-const vk = @import("vulkan\\vulkan.zig");
+const vk = @import("..\\vulkan\\vulkan.zig");
 const QFI = @import("QueueFamilyIndices.zig");
 const SSD = @import("SwapchainSupportDetails.zig");
 // Extensions
-// TODO: convert extension names from containing a bunch of fields to containing a bunch of declarations instead
 const required_instance_extensions = [_][*:0]const u8{
     vk.ExtensionName.win32_surface,
     vk.ExtensionName.surface,
@@ -35,7 +34,6 @@ format: vk.Format = undefined,
 extent: vk.Extent2D = undefined,
 
 pub fn init(allo: Allocator) !Engine {
-    _ = allo;
     var self: Engine = .{};
     self.window = try initWindow();
     self.instance = try createInstance();
@@ -48,6 +46,7 @@ pub fn init(allo: Allocator) !Engine {
     try self.createSwapchainImages(&self.n_images, null);
     try self.createSwapchainImages(&self.n_images, &self.images);
     try self.createSwapchainImageViews(&self.views);
+    try createGraphicsPipeline(allo);
     return self;
 }
 
@@ -432,4 +431,16 @@ fn createSwapchainImageViews(
     }
 }
 
-fn createGraphicsPipeline() void {}
+fn createGraphicsPipeline(allo: Allocator) void {
+    // should i even do this or just embed the files
+    const vert_shader_code = readFile(allo, "..\\shaders\\vert.spv");
+    const frag_shader_code = readFile(allo, "..\\shaders\\frag.spv");
+    _ = vert_shader_code;
+    _ = frag_shader_code;
+}
+
+fn readFile(allo: Allocator, filename: []const u8) []const u8 {
+    _ = allo;
+    var wfile = std.fs.cwd().openFile(filename, .{});
+    defer wfile.close();
+}
