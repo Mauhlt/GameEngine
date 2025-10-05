@@ -6,6 +6,7 @@ const win = @import("windows\\windows.zig");
 const WINDOW_HANDLE = @import("window_handle.zig");
 const vk = @import("vulkan\\vulkan.zig");
 const QFI = @import("QueueFamilyIndices.zig");
+const SSD = @import("SwapchainSupportDetails.zig");
 // Extensions
 // TODO: convert extension names from containing a bunch of fields to containing a bunch of declarations instead
 const required_instance_extensions = [_][*:0]const u8{
@@ -25,6 +26,12 @@ logical_device: vk.Device = .null,
 // queues
 graphics_queue: vk.Queue = .null,
 present_queue: vk.Queue = .null,
+// swapchain
+swapchain: vk.SwapchainKHR = .null,
+n_images: u32 = 0,
+images: [3]vk.Image = [_]vk.Image{.null} ** 3,
+format: vk.Format = undefined,
+extent: vk.Extent2D = undefined,
 
 pub fn init(allo: Allocator) !Engine {
     _ = allo;
@@ -34,10 +41,16 @@ pub fn init(allo: Allocator) !Engine {
     self.surface = try self.createSurface();
     self.physical_device = try self.pickPhysicalDevice();
     self.logical_device = try self.createLogicalDevice();
+    self.swapchain = try self.createSwapchain();
+    self.extent = try self.createSwapchainExtent();
+    self.format = try self.createSwapchainFormat();
+    try self.createSwapchainImages(&self.n_images, null);
+    try self.createSwapchainImages(&self.n_images, &self.images);
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
+    vk.destroySwapchainKHR(self.logical_device, self.swapchain, null);
     vk.destroyDevice(self.logical_device, null);
     vk.destroySurfaceKHR(self.instance, self.surface, null);
     vk.destroyInstance(self.instance, null);
@@ -110,10 +123,18 @@ fn createInstance() !vk.Instance {
     };
     // get extensions
     var n_exts: u32 = 0;
-    _ = vk.enumerateInstanceExtensionProperties(null, &n_exts, null);
+    switch (vk.enumerateInstanceExtensionProperties(null, &n_exts, null)) {
+        .success => {},
+        else => return error.FailedToEnumerateInstanceExtensionProperties,
+    }
+    // print("# Of Instance Extensions: {}\n", .{n_exts});
     var exts: [64]vk.ExtensionProperties = undefined;
-    _ = vk.enumerateInstanceExtensionProperties(null, &n_exts, &exts);
+    switch (vk.enumerateInstanceExtensionProperties(null, &n_exts, &exts)) {
+        .success => {},
+        else => return error.FailedToEnumerateInstanceExtensionProperties,
+    }
     // check that all required instance extensions are supported
+    var has_instance_extensions: bool = true;
     outer: for (required_instance_extensions) |req_ext| {
         const name1 = std.mem.span(req_ext);
         for (exts[0..n_exts]) |extension| {
@@ -121,9 +142,13 @@ fn createInstance() !vk.Instance {
             const name2 = extension.extension_name[0..len];
             if (std.mem.eql(u8, name1, name2)) continue :outer;
         }
-        print("Not Found: {s}\n", .{name1});
-        return error.RequiredExtensionNotSupported;
+        print("Missing: {s}\n", .{name1});
+        has_instance_extensions = false;
     }
+    if (!has_instance_extensions) {
+        return error.MissingRequiredInstanceExtension;
+    }
+
     // create info
     const create_info = vk.InstanceCreateInfo{
         .flags = switch (@import("builtin").os.tag) {
@@ -133,8 +158,8 @@ fn createInstance() !vk.Instance {
         .p_application_info = &app_info,
         .enabled_layer_count = 0,
         .pp_enabled_layer_names = null,
-        .enabled_extension_count = required_instance_extensions.len,
-        .pp_enabled_extension_names = &required_instance_extensions,
+        .enabled_extension_count = @truncate(required_instance_extensions.len),
+        .pp_enabled_extension_names = @ptrCast(&required_instance_extensions),
     };
     // create instance
     var instance: vk.Instance = .null;
@@ -157,67 +182,66 @@ fn createSurface(self: *Engine) !vk.SurfaceKHR {
 }
 
 fn pickPhysicalDevice(self: *const Engine) !vk.PhysicalDevice {
-    var n_devices: u32 = undefined;
+    // get # of devices
+    var n_devices: u32 = 0;
     switch (vk.enumeratePhysicalDevices(self.instance, &n_devices, null)) {
         .success => {},
         else => return error.FailedToEnumeratePhysicalDevices,
     }
     if (n_devices == 0) return error.FoundNoPhysicalDevice;
-    print("# Of Devices: {}\n", .{n_devices});
-
+    // get physical devices
     var physical_devices: [16]vk.PhysicalDevice = undefined;
     switch (vk.enumeratePhysicalDevices(self.instance, &n_devices, &physical_devices)) {
         .success => {},
         else => return error.FailedToEnumeratePhysicalDevices,
     }
-
+    // get physical device
     for (physical_devices[0..n_devices]) |physical_device| {
-        const is_device_suitable = isDeviceSuitable(physical_device, self.surface);
-        print("Is Device Suitable: {}\n", .{is_device_suitable});
+        const is_device_suitable = try isDeviceSuitable(physical_device, self.surface);
         if (is_device_suitable) return physical_device;
     }
-
-    return physical_devices[0];
-    // return error.FoundNoSuitablePhysicalDevice;
+    // default
+    return error.FoundNoSuitablePhysicalDevice;
 }
 
 // simplest
-fn isDeviceSuitable(device: vk.PhysicalDevice, surface: vk.SurfaceKHR) bool {
-    const is_complete = !QFI.init(device, surface).isComplete();
-    const are_exts_supported = checkDeviceExtensionSupport(device);
-    return is_complete and are_exts_supported;
+fn isDeviceSuitable(device: vk.PhysicalDevice, surface: vk.SurfaceKHR) !bool {
+    const qfi = try QFI.init(device, surface);
+    if (!qfi.isComplete()) return false;
+    if (!checkDeviceExtensionSupport(device)) return false;
+    const ssd = try SSD.init(device, surface);
+    return ssd.isAdequate();
 }
 
 fn checkDeviceExtensionSupport(device: vk.PhysicalDevice) bool {
+    // get # of device extensions
     var n_exts: u32 = 0;
     switch (vk.enumerateDeviceExtensionProperties(device, null, &n_exts, null)) {
         .success => {},
         else => return false,
         // else => return error.FailedToEnumerateDeviceExtensionProperties,
     }
+    // get device extensions
     var exts: [512]vk.ExtensionProperties = undefined;
     switch (vk.enumerateDeviceExtensionProperties(device, null, &n_exts, &exts)) {
         .success => {},
         else => return false,
         // else => return error.FailedToEnumerateDeviceExtensionProperties,
     }
-
-    for (required_device_extensions) |req_ext| {
-        const name = std.mem.span(req_ext);
-        print("Name: {s}\n", .{name});
-    }
-    print("\n", .{});
-
-    for (required_instance_extensions) |req_ext| {
+    // check that required device extensions are supported
+    var has_device_extensions: bool = true;
+    outer: for (required_device_extensions) |req_ext| {
         const name1 = std.mem.span(req_ext);
         for (exts[0..n_exts]) |ext| {
             const len = std.mem.indexOfScalar(u8, &ext.extension_name, 0).?;
             const name2 = ext.extension_name[0..len];
-            if (std.mem.eql(u8, name1, name2)) return true;
+            if (std.mem.eql(u8, name1, name2)) continue :outer;
         }
+        has_device_extensions = false;
+        print("Missing: {s}\n", .{name1});
     }
-
-    return false;
+    // default
+    return has_device_extensions;
 }
 
 // better
@@ -229,7 +253,7 @@ fn isDeviceSuitable1(device: vk.PhysicalDevice) bool {
     return props.deviceType == .device_type_discrete_gpu and (feats.geometryShader > 0);
 }
 
-// complex
+// best
 fn ratePhysicalDeviceSuitability(device: vk.PhysicalDevice) i32 {
     var score: i32 = 0;
     // props + feats
@@ -256,7 +280,7 @@ fn ratePhysicalDeviceSuitability(device: vk.PhysicalDevice) i32 {
 }
 
 fn createLogicalDevice(self: *Engine) !vk.Device {
-    const indices = QFI.init(self.physical_device, self.surface);
+    const indices = try QFI.init(self.physical_device, self.surface);
     var priority: f32 = 1.0;
     // 2 for amd, 1 for nvidia
     const queue_create_infos = [_]vk.DeviceQueueCreateInfo{
@@ -280,8 +304,8 @@ fn createLogicalDevice(self: *Engine) !vk.Device {
         .queue_create_info_count = len,
         .p_queue_create_infos = &queue_create_infos,
         .p_enabled_features = &feats,
-        .enabled_extension_count = 0,
-        .pp_enabled_extension_names = null,
+        .enabled_extension_count = @truncate(required_device_extensions.len),
+        .pp_enabled_extension_names = @ptrCast(&required_device_extensions),
         .enabled_layer_count = 0,
         .pp_enabled_layer_names = null,
     };
@@ -294,4 +318,76 @@ fn createLogicalDevice(self: *Engine) !vk.Device {
     // below has version 2
     vk.getDeviceQueue(logical_device, indices.graphics_family.?, 0, &self.graphics_queue);
     return logical_device;
+}
+
+fn createSwapchain(self: *Engine) !vk.SwapchainKHR {
+    const ssd = try SSD.init(self.physical_device, self.surface);
+    const surface_format = ssd.chooseSurfaceFormat();
+    const present_mode = ssd.choosePresentMode();
+    const extent = ssd.chooseExtent();
+
+    var n_images: u32 = ssd.capabilities.min_image_count + 1;
+    if (ssd.capabilities.max_image_count > 0 and ssd.capabilities.max_image_count < n_images) //
+        n_images = ssd.capabilities.max_image_count;
+
+    const indices = try QFI.init(self.physical_device, self.surface);
+    const is_same_family = indices.isSameFamily();
+    const queue_family_indices = [_]u32{ indices.graphics_family.?, indices.present_family.? };
+
+    const create_info = vk.SwapchainCreateInfoKHR{
+        .surface = self.surface,
+        .min_image_count = n_images,
+        .image_format = surface_format.format,
+        .image_color_space = surface_format.color_space,
+        .image_extent = extent,
+        .image_array_layers = 1,
+        .image_usage = .init(.color_attachment_bit),
+        .image_sharing_mode = if (is_same_family) .exclusive else .concurrent,
+        .queue_family_index_count = if (is_same_family) 0 else 2,
+        .p_queue_family_indices = if (is_same_family) null else &queue_family_indices,
+        .pre_transform = ssd.capabilities.current_transform,
+        .composite_alpha = .opaque_bit,
+        .present_mode = present_mode,
+        .clipped = .true,
+        .old_swapchain = .null,
+    };
+    // create swapchain
+    var swapchain: vk.SwapchainKHR = .null;
+    return switch (vk.createSwapchainKHR(
+        self.logical_device,
+        &create_info,
+        null,
+        &swapchain,
+    )) {
+        .success => swapchain,
+        else => error.FailedToCreateSwapchain,
+    };
+}
+
+fn createSwapchainFormat(self: *Engine) !vk.Format {
+    const ssd = try SSD.init(self.physical_device, self.surface);
+    const surface_format = ssd.chooseSurfaceFormat();
+    return surface_format.format;
+}
+
+fn createSwapchainExtent(self: *Engine) !vk.Extent2D {
+    const ssd = try SSD.init(self.physical_device, self.surface);
+    const extent = ssd.chooseExtent();
+    return extent;
+}
+
+fn createSwapchainImages(
+    self: *Engine,
+    n_images: *u32,
+    images: [*c]vk.Image,
+) !void {
+    switch (vk.getSwapchainImagesKHR(
+        self.logical_device,
+        self.swapchain,
+        n_images,
+        images,
+    )) {
+        .success => {},
+        else => return error.FailedTogetSwapchainImages,
+    }
 }
