@@ -30,6 +30,7 @@ present_queue: vk.Queue = .null,
 swapchain: vk.SwapchainKHR = .null,
 n_images: u32 = 0,
 images: [3]vk.Image = [_]vk.Image{.null} ** 3,
+views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
 format: vk.Format = undefined,
 extent: vk.Extent2D = undefined,
 
@@ -46,10 +47,14 @@ pub fn init(allo: Allocator) !Engine {
     self.format = try self.createSwapchainFormat();
     try self.createSwapchainImages(&self.n_images, null);
     try self.createSwapchainImages(&self.n_images, &self.images);
+    try self.createSwapchainImageViews(&self.views);
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
+    for (0..self.n_images) |i| {
+        vk.destroyImageView(self.logical_device, self.views[i], null);
+    }
     vk.destroySwapchainKHR(self.logical_device, self.swapchain, null);
     vk.destroyDevice(self.logical_device, null);
     vk.destroySurfaceKHR(self.instance, self.surface, null);
@@ -391,3 +396,40 @@ fn createSwapchainImages(
         else => return error.FailedTogetSwapchainImages,
     }
 }
+
+fn createSwapchainImageViews(
+    self: *Engine,
+    views: [*c]vk.ImageView,
+) !void {
+    for (0..self.n_images) |i| {
+        const image = self.images[i];
+        const create_info = vk.ImageViewCreateInfo{
+            .image = image,
+            .view_type = .@"2d",
+            .format = self.format,
+            .components = .{
+                .r = .identity,
+                .g = .identity,
+                .b = .identity,
+                .a = .identity,
+            },
+            .aspect_mask = .color_bit,
+            .base_mip_level = 0,
+            .lewel_count = 1,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        };
+        var view = views[i];
+        switch (vk.createImageView(
+            self.logical_device,
+            &create_info,
+            null,
+            &view,
+        )) {
+            .success => {},
+            else => return error.FailedToCreateImageView,
+        }
+    }
+}
+
+fn createGraphicsPipeline() void {}
