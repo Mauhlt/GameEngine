@@ -42,7 +42,7 @@ pub extern "kernel32" fn GetModuleHandleW(
     module_name: ?[*:0]const u16,
 ) callconv(.winapi) t.HINSTANCE;
 pub extern "gdi32" fn GetSysColorBrush(index: e.Color) callconv(.winapi) t.HBRUSH;
-
+pub extern "user32" fn GetSystemMetrics(n_index: e.SystemMetrics) callconv(.winapi) i32;
 pub extern "user32" fn LoadIconW(
     instance: t.HINSTANCE,
     icon_name: [*:0]const u16,

@@ -31,6 +31,7 @@ pub const DispatchMessageW = @import("windows_fns.zig").DispatchMessageW;
 pub const GetMessageW = @import("windows_fns.zig").GetMessageW;
 pub const GetModuleHandleW = @import("windows_fns.zig").GetModuleHandleW;
 pub const GetSysColorBrush = @import("windows_fns.zig").GetSysColorBrush;
+pub const GetSystemMetrics = @import("windows_fns.zig").GetSystemMetrics;
 pub const RegisterClassW = @import("windows_fns.zig").RegisterClassW;
 pub const RegisterClassExW = @import("windows_fns.zig").RegisterClassExW;
 pub const LoadCursorW = @import("windows_fns.zig").LoadCursorW;

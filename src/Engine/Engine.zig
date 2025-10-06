@@ -1,4 +1,5 @@
 // TODO:
+// Switch window handler based on os
 // embed shader files
 // use window handle as interface to windows
 const std = @import("std");
@@ -21,9 +22,11 @@ const required_device_extensions = [_][*:0]const u8{
     vk.ExtensionName.swapchain,
 };
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
-const DefaultExtent = vk.Extent2D{
-    .width = 800,
-    .height = 600,
+// Vertices
+const triangle_vertices = [_]Vertex{
+    .{ .{ 0.0, -0.5 }, .{ 1.0, 0.0, 0.0 } },
+    .{ .{ 0.5, 0.5 }, .{ 0.0, 1.0, 0.0 } },
+    .{ .{ -0.5, 0.5 }, .{ 0.0, 0.0, 1.0 } },
 };
 const Engine = @This();
 // Fields
@@ -37,31 +40,38 @@ graphics_queue: vk.Queue = .null,
 present_queue: vk.Queue = .null,
 // swapchain
 swapchain: vk.SwapchainKHR = .null,
-n_images: u32 = 0,
-images: [3]vk.Image = [_]vk.Image{.null} ** 3,
-views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
+images: [MAX_FRAMES_IN_FLIGHT]vk.Image = //
+    [_]vk.Image{.null} ** MAX_FRAMES_IN_FLIGHT,
+views: [MAX_FRAMES_IN_FLIGHT]vk.ImageView = //
+    [_]vk.ImageView{.null} ** MAX_FRAMES_IN_FLIGHT,
 format: vk.Format = undefined,
 extent: vk.Extent2D = undefined,
-framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
+framebuffers: [MAX_FRAMES_IN_FLIGHT]vk.Framebuffer = //
+    [_]vk.Framebuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
 // pipeline
 render_pass: vk.RenderPass = .null,
 pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // command pool
 command_pool: vk.CommandPool = .null,
-command_buffers: [3]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** 3,
+vertex_buffer: vk.Buffer = .null,
+vertex_buffer_memory: vk.DeviceMemory = .null,
+command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = //
+    [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
 // synchronization
-image_available_semaphores: [3]vk.Semaphore = [_]vk.Semaphore{.null} ** 3,
-render_finished_semaphores: [3]vk.Semaphore = [_]vk.Semaphore{.null} ** 3,
-in_flight_fences: [3]vk.Fence = [_]vk.Fence{.null} ** 3,
+image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = //
+    [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
+render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = //
+    [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
+in_flight_fences: [MAX_FRAMES_IN_FLIGHT]vk.Fence = //
+    [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT,
+// flags
 current_frame: u32 = 0,
 is_framebuffer_resized: bool = false,
-// buffers
-vertex_buffer: vk.Buffer,
 
 pub fn init(allo: Allocator) !Engine {
     var self: Engine = .{};
-    self.window = try initWindow();
+    self.window = try initWindow(800, 600);
     self.instance = try createInstance();
     self.surface = try self.createSurface();
     self.physical_device = try self.pickPhysicalDevice();
@@ -70,8 +80,7 @@ pub fn init(allo: Allocator) !Engine {
     self.extent = try self.createSwapchainExtent();
     self.format = try self.createSwapchainFormat();
     // arrays
-    try self.createSwapchainImages(&self.n_images, null);
-    try self.createSwapchainImages(&self.n_images, &self.images);
+    try self.createSwapchainImages(&self.images);
     try self.createSwapchainImageViews(&self.views);
     try self.createFramebuffers(&self.framebuffers);
     // pipeline
@@ -134,8 +143,7 @@ pub fn deinit(self: *Engine) void {
     self.deinitWindow();
 }
 
-fn initWindow() !WINDOW_HANDLE {
-    // TODO: Switch based on os
+fn initWindow(w: u32, h: u32) !WINDOW_HANDLE {
     const instance = win.GetModuleHandleW(null);
     // wide strings
     const class_name = utf8ToUtf16("ZigWindowClass");
@@ -165,8 +173,8 @@ fn initWindow() !WINDOW_HANDLE {
         win.overlapped_window.bits.mask,
         100,
         100,
-        800,
-        600,
+        w,
+        h,
         .null,
         .null,
         instance,
@@ -253,7 +261,12 @@ fn createSurface(self: *Engine) !vk.SurfaceKHR {
         .hinstance = self.window.instance,
     };
     var surface: vk.SurfaceKHR = .null;
-    return switch (vk.createWin32SurfaceKHR(self.instance, &create_info, null, &surface)) {
+    return switch (vk.createWin32SurfaceKHR(
+        self.instance,
+        &create_info,
+        null,
+        &surface,
+    )) {
         .success => surface,
         else => error.FailedToCreateSurface,
     };
@@ -456,23 +469,32 @@ fn createSwapchainExtent(self: *Engine) !vk.Extent2D {
 
 fn createSwapchainImages(
     self: *Engine,
-    n_images: *u32,
-    images: [*c]vk.Image,
+    images: *[MAX_FRAMES_IN_FLIGHT]vk.Image,
 ) !void {
+    var n_images: u32 = 0;
     switch (vk.getSwapchainImagesKHR(
         self.logical_device,
         self.swapchain,
-        n_images,
+        &n_images,
+        null,
+    )) {
+        .success => {},
+        else => return error.FailedToGetSwapchainImages,
+    }
+    switch (vk.getSwapchainImagesKHR(
+        self.logical_device,
+        self.swapchain,
+        &n_images,
         images,
     )) {
         .success => {},
-        else => return error.FailedTogetSwapchainImages,
+        else => return error.FailedToGetSwapchainImages,
     }
 }
 
 fn createSwapchainImageViews(
     self: *Engine,
-    views: *[3]vk.ImageView,
+    views: *[MAX_FRAMES_IN_FLIGHT]vk.ImageView,
 ) !void {
     for (0..self.n_images) |i| {
         const image = self.images[i];
@@ -761,7 +783,10 @@ fn createGraphicsPipeline(self: *Engine, allo: Allocator) !vk.Pipeline {
     };
 }
 
-fn createFramebuffers(self: *Engine, framebuffers: *[3]vk.Framebuffer) !void {
+fn createFramebuffers(
+    self: *Engine,
+    framebuffers: *[MAX_FRAMES_IN_FLIGHT]vk.Framebuffer,
+) !void {
     for (0..self.n_images) |i| {
         const attachments = [_]vk.ImageView{
             self.views[i],
@@ -808,9 +833,20 @@ fn createCommandPool(self: *Engine) !vk.CommandPool {
     };
 }
 
+fn findMemory(self: *Engine, type_filter: u32, props: vk.MemoryPropertyFlags) !u32 {
+    const mem_props = vk.PhysicalDeviceMemoryProperties{};
+    vk.getPhysicalDeviceMemoryProperties(self.physical_device, &mem_props);
+    for (0..mem_props.memory_type_count) |i| {
+        if (!(type_filter and (1 << i))) continue;
+        if (!(mem_props.memory_types[i].property_flags & props) == props) continue;
+        return i;
+    }
+    return error.FailedToFindSuitableMemoryType;
+}
+
 fn createCommandBuffers(
     self: *Engine,
-    command_buffers: *[3]vk.CommandBuffer,
+    command_buffers: *[MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer,
 ) !void {
     const alloc_info = vk.CommandBufferAllocateInfo{
         .command_pool = self.command_pool,
@@ -1039,15 +1075,13 @@ pub fn run(self: *Engine) !void {
 }
 
 fn initSwapchain(self: *Engine) void {
-    //
-    // var width: i32, var height: i32 = .{ 0, 0 };
-    // frambuffer_size(window, &width, &height);
-    // while (width == 0 or height == 0) {
-    //     framebuffer_size callback
-    //     wait()
-    // }
-    //
+    var w: i32, var h: i32 = win.getWindowSize();
+    while (w == 0 or h == 0) {}
+    // wait
     vk.deviceWaitIdle(self.logical_device);
+    // cleanup
+    try self.deinitSwapchain();
+    // recreate
     try self.createSwapchain();
     try self.createSwapchainImageViews(self.views);
     try self.createFramebuffers(self.framebuffers);
@@ -1061,9 +1095,12 @@ fn deinitSwapchain(self: *Engine) void {
     vk.destroySwapchainKHR(self.logical_device, self.swapchain, null);
 }
 
-fn createVertexBuffer(self: *Engine, vertices: []Vertex) vk.Buffer {
+fn createVertexBuffer(
+    self: *Engine,
+    vertices: []Vertex,
+) vk.Buffer {
     const create_info = vk.BufferCreateInfo{
-        .size = @sizeOf(vertices[0]) * vertices.len,
+        .size = @as(u32, @truncate(@sizeOf(vertices[0]))) * @as(u32, @truncate(vertices.len)),
         .usage = .vertex_buffer_bit,
         .sharing_mode = .exclusive,
     };
@@ -1080,4 +1117,29 @@ fn createVertexBuffer(self: *Engine, vertices: []Vertex) vk.Buffer {
     };
 }
 
-fn findMemory(type_filter: u32, props: vk.MemoryPropertyFlags) u32 {}
+fn createVertexBufferMemory(
+    self: *Engine,
+    vertex_buffer: vk.Buffer,
+) vk.DeviceMemory {
+    var mem_reqs: vk.MemoryRequirements = .{};
+    vk.getBufferMemoryRequirements(self.logical_device, vertex_buffer, &mem_reqs);
+
+    const alloc_info = vk.MemoryAllocateInfo{
+        .allocation_size = mem_reqs.size,
+        .memory_type_index = try self.findMemory(
+            mem_reqs.memory_type_bits,
+            .init(.host_visible_bit, .host_coherent_bit),
+        ),
+    };
+
+    var vertex_buffer_memory: vk.DeviceMemory = .null;
+    switch (vk.allocateMemory(
+        self.logical_device,
+        &alloc_info,
+        null,
+        &vertex_buffer_memory,
+    )) {
+        .success => {},
+        else => return error.FailedToAllocateVertexBufferMemory,
+    }
+}
