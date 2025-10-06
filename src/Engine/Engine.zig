@@ -1076,7 +1076,10 @@ pub fn run(self: *Engine) !void {
 
 fn initSwapchain(self: *Engine) void {
     var w: i32, var h: i32 = win.getWindowSize();
-    while (w == 0 or h == 0) {}
+    while (w == 0 or h == 0) {
+        w, h = win.getWindowSize();
+    }
+    win.SetWindowPos();
     // wait
     vk.deviceWaitIdle(self.logical_device);
     // cleanup
