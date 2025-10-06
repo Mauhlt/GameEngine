@@ -1,6 +1,9 @@
+// TODO:
+// embed shader files
 const std = @import("std");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
+const utf8ToUtf16 = std.unicode.utf8ToUtf16LeStringLiteral;
 // imports
 const win = @import("..\\windows\\windows.zig");
 const WINDOW_HANDLE = @import("window_handle.zig");
@@ -14,6 +17,11 @@ const required_instance_extensions = [_][*:0]const u8{
 };
 const required_device_extensions = [_][*:0]const u8{
     vk.ExtensionName.swapchain,
+};
+const MAX_FRAMES_IN_FLIGHT: i32 = 2;
+const DefaultExtent = vk.Extent2D{
+    .width = 800,
+    .height = 600,
 };
 const Engine = @This();
 // Fields
@@ -39,11 +47,11 @@ pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // command pool
 command_pool: vk.CommandPool = .null,
-command_buffer: vk.CommandBuffer = .null,
+command_buffer: [3]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** 3,
 // synchronization
-image_available_semaphore: vk.Semaphore = .null,
-render_finished_semaphore: vk.Semaphore = .null,
-in_flight_fence: vk.Fence = .null,
+image_available_semaphore: [3]vk.Semaphore = [_]vk.Semaphore{.null} ** 3,
+render_finished_semaphore: [3]vk.Semaphore = [_]vk.Semaphore{.null} ** 3,
+in_flight_fence: [3]vk.Fence = [_]vk.Fence{.null} ** 3,
 
 pub fn init(allo: Allocator) !Engine {
     var self: Engine = .{};
@@ -59,30 +67,42 @@ pub fn init(allo: Allocator) !Engine {
     try self.createSwapchainImages(&self.n_images, null);
     try self.createSwapchainImages(&self.n_images, &self.images);
     try self.createSwapchainImageViews(&self.views);
+    try self.createFramebuffers(&self.framebuffers);
     // pipeline
     self.render_pass = try self.createRenderPass();
     self.pipeline_layout = try self.createGraphicsPipelineLayout();
     self.pipeline = try self.createGraphicsPipeline(allo);
+    // Commands
+    self.command_pool = try self.createCommandPool();
     // sync objects
-    self.image_available_semaphore = try self.createSemaphore();
-    self.render_finished_semaphore = try self.createSemaphore();
-    self.in_flight_fence = try self.createFence();
+    // self.image_available_semaphore = try self.createSemaphore();
+    // self.render_finished_semaphore = try self.createSemaphore();
+    // self.in_flight_fence = try self.createFence();
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
-    // sync objects
-    vk.destroySemaphore(self.logical_device, self.image_available_semaphore, null);
-    vk.destroySemaphore(self.logical_device, self.render_finished_semaphore, null);
-    vk.destroyFence(self.logical_device, self.in_flight_fence, null);
+    // // sync objects
+    // vk.destroySemaphore(self.logical_device, self.image_available_semaphore, null,);
+    // vk.destroySemaphore(self.logical_device, self.render_finished_semaphore, null,);
+    // vk.destroyFence(self.logical_device, self.in_flight_fence, null);
     // commands
     vk.destroyCommandPool(self.logical_device, self.command_pool, null);
     for (0..self.n_images) |i| {
-        vk.destroyFramebuffer(self.logical_device, self.framebuffers[i], null);
+        vk.destroyFramebuffer(
+            self.logical_device,
+            self.framebuffers[i],
+            null,
+        );
     }
     // pipeline
     vk.destroyPipeline(self.logical_device, self.pipeline, null);
-    vk.destroyPipelineLayout(self.logical_device, self.pipeline_layout, null);
+    vk.destroyPipelineLayout(
+        self.logical_device,
+        self.pipeline_layout,
+        null,
+    );
+    vk.destroyRenderPass(self.logical_device, self.render_pass, null);
     // swapchain
     for (0..self.n_images) |i| {
         vk.destroyImageView(self.logical_device, self.views[i], null);
@@ -99,11 +119,11 @@ fn initWindow() !WINDOW_HANDLE {
     // TODO: Switch based on os
     const instance = win.GetModuleHandleW(null);
     // wide strings
-    const class_name = std.unicode.utf8ToUtf16LeStringLiteral("ZigWindowClass");
-    const title = std.unicode.utf8ToUtf16LeStringLiteral("Zig Unicode Window");
+    const class_name = utf8ToUtf16("ZigWindowClass");
+    const title = utf8ToUtf16("Zig Unicode Window");
     // icons + cursors
-    const icon = win.LoadIconW(.null, std.unicode.utf8ToUtf16LeStringLiteral("IDI_APPLICATION"));
-    const cursor = win.LoadCursorW(.null, std.unicode.utf8ToUtf16LeStringLiteral("IDC_ARROW"));
+    const icon = win.LoadIconW(.null, ("IDI_APPLICATION"));
+    const cursor = win.LoadCursorW(.null, utf8ToUtf16("IDC_ARROW"));
     var wc: win.WNDCLASSEXW = .{
         .style = win.redraw.bits.mask,
         .instance = instance,
@@ -417,7 +437,7 @@ fn createSwapchainExtent(self: *Engine) !vk.Extent2D {
 fn createSwapchainImages(
     self: *Engine,
     n_images: *u32,
-    images: [*c]vk.Image,
+    images: *[3]vk.Image,
 ) !void {
     switch (vk.getSwapchainImagesKHR(
         self.logical_device,
@@ -432,7 +452,7 @@ fn createSwapchainImages(
 
 fn createSwapchainImageViews(
     self: *Engine,
-    views: [*c]vk.ImageView,
+    views: *[3]vk.ImageView,
 ) !void {
     for (0..self.n_images) |i| {
         const image = self.images[i];
@@ -490,11 +510,17 @@ fn allocReadFile(allo: Allocator, filename: []const u8) ![]const u8 {
 
 fn createShaderModule(self: *Engine, code: []const u8) !vk.ShaderModule {
     const create_info = vk.ShaderModuleCreateInfo{
-        .code_size = code.len,
+        .code_size = @truncate(code.len),
         .p_code = @ptrCast(@alignCast(code)),
     };
+
     var shader_module: vk.ShaderModule = .null;
-    return switch (vk.createShaderModule(self.logical_device, &create_info, null, &shader_module)) {
+    return switch (vk.createShaderModule(
+        self.logical_device,
+        &create_info,
+        null,
+        &shader_module,
+    )) {
         .success => shader_module,
         else => error.FailedToCreateShaderModule,
     };
@@ -526,11 +552,23 @@ fn createRenderPass(self: *Engine) !vk.RenderPass {
     };
 
     // has version 2
+    const dependency = vk.SubpassDependency{
+        .src_subpass = vk.SubpassExternal,
+        .dst_subpass = 0,
+        .src_stage_mask = .init(.color_attachment_output_bit),
+        .src_access_mask = .initEmpty(),
+        .dst_stage_mask = .init(.color_attachment_output_bit),
+        .dst_access_mask = .init(.color_attachment_write_bit),
+    };
+
+    // has version 2
     const create_info = vk.RenderPassCreateInfo{
         .attachment_count = 1,
         .p_attachments = &color_attachment,
         .subpass_count = 1,
         .p_subpasses = &subpass,
+        .dependency_count = 1,
+        .p_dependencies = &dependency,
     };
 
     // has version 2
@@ -567,18 +605,20 @@ fn createGraphicsPipelineLayout(self: *Engine) !vk.PipelineLayout {
 }
 
 fn createGraphicsPipeline(self: *Engine, allo: Allocator) !vk.Pipeline {
-    // read files - prob should embed them for better performance
     const vert_spv = try allocReadFile(allo, "tri.vert.spv");
+    // print("Vert SPV: {}\n", .{vert_spv.len});
     defer allo.free(vert_spv);
 
     const frag_spv = try allocReadFile(allo, "tri.frag.spv");
+    // print("Frag SPV: {}\n", .{frag_spv.len});
     defer allo.free(frag_spv);
+
     // create shader modules
     const vert_sm = try self.createShaderModule(vert_spv);
     defer vk.destroyShaderModule(self.logical_device, vert_sm, null);
 
     const frag_sm = try self.createShaderModule(frag_spv);
-    defer vk.destroyShaderModule(self.logical_device, vert_sm, null);
+    defer vk.destroyShaderModule(self.logical_device, frag_sm, null);
 
     const vert_shader_stage_info = vk.PipelineShaderStageCreateInfo{
         .stage = .vertex_bit,
@@ -609,38 +649,11 @@ fn createGraphicsPipeline(self: *Engine, allo: Allocator) !vk.Pipeline {
         .primitive_restart_enable = .false,
     };
 
-    const viewport = vk.Viewport{
-        .x = 0,
-        .y = 0,
-        .width = @floatFromInt(self.extent.width),
-        .height = @floatFromInt(self.extent.height),
-        .min_depth = 0,
-        .max_depth = 1,
-    };
-
-    const scissor = vk.Rect2D{
-        .offset = .{
-            .x = 0,
-            .y = 0,
-        },
-        .extent = self.extent,
-    };
-
-    const dynamic_states = [_]vk.DynamicState{
-        .viewport,
-        .scissor,
-    };
-
-    const dynamic_state = vk.PipelineDynamicStateCreateInfo{
-        .dynamic_state_count = @truncate(dynamic_states.len),
-        .p_dynamic_states = &dynamic_states,
-    };
-
     const viewport_state = vk.PipelineViewportStateCreateInfo{
         .viewport_count = 1,
-        .p_viewports = &viewport,
+        // .p_viewports = &viewport,
         .scissor_count = 1,
-        .p_scissors = &scissor,
+        // .p_scissors = &scissor,
     };
 
     const rasterizer = vk.PipelineRasterizationStateCreateInfo{
@@ -659,21 +672,21 @@ fn createGraphicsPipeline(self: *Engine, allo: Allocator) !vk.Pipeline {
     const multisampling = vk.PipelineMultisampleStateCreateInfo{
         .sample_shading_enable = .false,
         .rasterization_samples = .@"1_bit",
-        .min_sample_shading = 1,
-        .p_sample_mask = null,
-        .alpha_to_coverage_enable = .false,
-        .alpha_to_one_enable = .false,
+        // .min_sample_shading = 1,
+        // .p_sample_mask = null,
+        // .alpha_to_coverage_enable = .false,
+        // .alpha_to_one_enable = .false,
     };
 
     const color_blend_attachment = vk.PipelineColorBlendAttachmentState{
         .color_write_mask = .initMany(&.{ .r_bit, .g_bit, .b_bit, .a_bit }),
-        .blend_enable = .true,
-        .src_color_blend_factor = .src_alpha,
-        .dst_color_blend_factor = .one_minus_src_alpha,
-        .color_blend_op = .add,
-        .src_alpha_blend_factor = .one,
-        .dst_alpha_blend_factor = .zero,
-        .alpha_blend_op = .add,
+        .blend_enable = .false, // .true,
+        // .src_color_blend_factor = .src_alpha,
+        // .dst_color_blend_factor = .one_minus_src_alpha,
+        // .color_blend_op = .add,
+        // .src_alpha_blend_factor = .one,
+        // .dst_alpha_blend_factor = .zero,
+        // .alpha_blend_op = .add,
     };
 
     const color_blending = vk.PipelineColorBlendStateCreateInfo{
@@ -682,6 +695,16 @@ fn createGraphicsPipeline(self: *Engine, allo: Allocator) !vk.Pipeline {
         .attachment_count = 1,
         .p_attachments = &color_blend_attachment,
         .blend_constants = [4]f32{ 0, 0, 0, 0 },
+    };
+
+    const dynamic_states = [_]vk.DynamicState{
+        .viewport,
+        .scissor,
+    };
+
+    const dynamic_state = vk.PipelineDynamicStateCreateInfo{
+        .dynamic_state_count = @truncate(dynamic_states.len),
+        .p_dynamic_states = &dynamic_states,
     };
 
     const create_info = vk.GraphicsPipelineCreateInfo{
@@ -699,7 +722,7 @@ fn createGraphicsPipeline(self: *Engine, allo: Allocator) !vk.Pipeline {
         .render_pass = self.render_pass,
         .subpass = 0,
         .base_pipeline_handle = .null,
-        .base_pipeline_index = -1,
+        // .base_pipeline_index = -1,
     };
 
     var pipeline: vk.Pipeline = .null;
@@ -716,16 +739,16 @@ fn createGraphicsPipeline(self: *Engine, allo: Allocator) !vk.Pipeline {
     };
 }
 
-fn createFramebuffers(self: *Engine, framebuffers: *[3]vk.Framebuffer) void {
+fn createFramebuffers(self: *Engine, framebuffers: *[3]vk.Framebuffer) !void {
     for (0..self.n_images) |i| {
-        const attachment = vk.ImageView{
+        const attachments = vk.ImageView{
             self.views[i],
         };
 
         const create_info = vk.FramebufferCreateInfo{
             .render_pass = self.render_pass,
             .attachment_count = 1,
-            .p_attachments = &attachment,
+            .p_attachments = &attachments,
             .width = self.extent.width,
             .height = self.extent.height,
             .layers = 1,
@@ -743,10 +766,11 @@ fn createFramebuffers(self: *Engine, framebuffers: *[3]vk.Framebuffer) void {
     }
 }
 
-fn createCommandPool(self: *Engine) vk.CommandPool {
+fn createCommandPool(self: *Engine) !vk.CommandPool {
     const indices = try QFI.init(self.physical_device, self.surface);
 
     const create_info = vk.CommandPoolCreateInfo{
+        .flags = .reset_command_buffer_bit,
         .queue_family_index = indices.graphics_family.?,
     };
 
@@ -762,7 +786,7 @@ fn createCommandPool(self: *Engine) vk.CommandPool {
     };
 }
 
-fn createCommandBuffer(self: *Engine) vk.CommandBuffer {
+fn createCommandBuffers(self: *Engine) vk.CommandBuffer {
     const alloc_info = vk.CommandBufferAllocateInfo{
         .command_pool = self.command_pool,
         .level = .primary,
@@ -857,72 +881,79 @@ fn createFence(self: *Engine) !vk.Fence {
     };
 }
 
-fn drawFrame(self: *Engine) void {
-    // wait
-    vk.waitForFences(
-        self.logical_devices,
-        1,
-        self.in_flight_fence,
-        .true,
-        std.math.maxInt(u64),
-    );
-    // reset
-    vk.resetFences(self.logical_device, 1, self.in_flight_fence);
-    var image_index: u32 = 0;
-    // has version 2
-    vk.acquireNextImageKHR(
-        self.logical_device,
-        self.swapchain,
-        std.math.maxInt(u64),
-        self.image_available_semaphore,
-        .null,
-        &image_index,
-    );
-    vk.resetCommandBuffer(self.command_buffer, 0);
-    self.recordCommandBuffer(self.command_buffer, image_index);
-    // submit command buffer
-    const wait_semaphores = [_]vk.Semaphore{self.image_available_semaphore};
-    const wait_stages = [_]vk.PipelineStageFlags{.color_attachment_output_bit};
-    const signal_semaphores = [_]vk.Sempahore{self.render_finished_semaphore};
-    const submit_info = vk.SubmitInfo{
-        .wait_semaphore_count = @truncate(wait_stages.len),
-        .p_wait_semaphores = &wait_semaphores,
-        .p_wait_dst_stage_mask = &wait_stages,
-        .command_buffer_count = 1,
-        .p_command_buffers = &self.command_buffer,
-        .signal_semaphore_count = @truncate(signal_semaphores.len),
-        .p_signal_semaphores = &signal_semaphores,
-    };
-    switch (vk.queueSubmit(self.graphics_queue, 1, &submit_info, self.in_flight_fence)) {
-        .success => {},
-        else => return error.FailedToSubmitDrawCommandBuffer,
-    }
-
-    const dependency = vk.SubpassDependency{
-        .src_subpass = .external,
-        .dst_subpass = 0,
-        .src_stage_mask = .color_attachment_output_bit,
-        .src_access_mask = 0,
-        .dst_stage_mask = .color_attachment_output_bit,
-        .dst_access_mask = .color_attachment_write_bit,
-    };
-
-    const swapchains = [_]vk.SwapchainKHR{self.swapchain};
-    const present_info = vk.PresentInfoKHR{
-        .wait_semaphore_count = 1,
-        .p_wait_semaphores = signal_semaphores,
-        .swapchain_count = 1,
-        .p_swapchains = &swapchains,
-        .p_image_indices = &image_index,
-        .p_results = null,
-    };
-    vk.queuePresentKHR(self.present_queue, &present_info);
-}
-
-pub fn run(self: *Engine) void {
-    while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-        self.drawFrame();
-    }
-    vk.deviceWaitIdle(self.logical_device);
-}
+// fn drawFrame(self: *Engine) void {
+//     // wait
+//     vk.waitForFences(
+//         self.logical_devices,
+//         1,
+//         self.in_flight_fence,
+//         .true,
+//         std.math.maxInt(u64),
+//     );
+//     // reset
+//     vk.resetFences(self.logical_device, 1, self.in_flight_fence);
+//     var image_index: u32 = 0;
+//     // has version 2
+//     vk.acquireNextImageKHR(
+//         self.logical_device,
+//         self.swapchain,
+//         std.math.maxInt(u64),
+//         self.image_available_semaphore,
+//         .null,
+//         &image_index,
+//     );
+//     vk.resetCommandBuffer(self.command_buffer, 0);
+//     self.recordCommandBuffer(self.command_buffer, image_index);
+//     // submit command buffer
+//     const wait_semaphores = [_]vk.Semaphore{self.image_available_semaphore};
+//     const wait_stages = [_]vk.PipelineStageFlags{.color_attachment_output_bit};
+//     const signal_semaphores = [_]vk.Sempahore{self.render_finished_semaphore};
+//     const submit_info = vk.SubmitInfo{
+//         .wait_semaphore_count = @truncate(wait_stages.len),
+//         .p_wait_semaphores = &wait_semaphores,
+//         .p_wait_dst_stage_mask = &wait_stages,
+//         .command_buffer_count = 1,
+//         .p_command_buffers = &self.command_buffer,
+//         .signal_semaphore_count = @truncate(signal_semaphores.len),
+//         .p_signal_semaphores = &signal_semaphores,
+//     };
+//     switch (vk.queueSubmit(self.graphics_queue, 1, &submit_info, self.in_flight_fence)) {
+//         .success => {},
+//         else => return error.FailedToSubmitDrawCommandBuffer,
+//     }
+//
+//     const dependency = vk.SubpassDependency{
+//         .src_subpass = .external,
+//         .dst_subpass = 0,
+//         .src_stage_mask = .color_attachment_output_bit,
+//         .src_access_mask = 0,
+//         .dst_stage_mask = .color_attachment_output_bit,
+//         .dst_access_mask = .color_attachment_write_bit,
+//     };
+//
+//     const swapchains = [_]vk.SwapchainKHR{self.swapchain};
+//     const present_info = vk.PresentInfoKHR{
+//         .wait_semaphore_count = 1,
+//         .p_wait_semaphores = signal_semaphores,
+//         .swapchain_count = 1,
+//         .p_swapchains = &swapchains,
+//         .p_image_indices = &image_index,
+//         .p_results = null,
+//     };
+//     vk.queuePresentKHR(self.present_queue, &present_info);
+// }
+//
+// pub fn run(self: *Engine) void {
+//     _ = win.ShowWindow(self.window_handle, .show);
+//     _ = win.UpdateWindow(self.window_handle);
+//     var msg: win.MSG = undefined;
+//     while (win.GetMessageW(&msg, self.window_handle, 0, 0) != 0) {
+//         _ = win.TranslateMessage(&msg);
+//         _ = win.DispatchMessageW(&msg);
+//     }
+//     // while (!glfwWindowShouldClose(window)) {
+//     //     glfwPollEvents();
+//     //     self.drawFrame();
+//     // }
+//     // vk.deviceWaitIdle(self.logical_device);
+// }

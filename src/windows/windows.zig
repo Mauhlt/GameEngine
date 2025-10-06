@@ -35,6 +35,7 @@ pub const RegisterClassExW = @import("windows_fns.zig").RegisterClassExW;
 pub const LoadCursorW = @import("windows_fns.zig").LoadCursorW;
 pub const LoadIconW = @import("windows_fns.zig").LoadIconW;
 pub const ShowWindow = @import("windows_fns.zig").ShowWindow;
+pub const TranslateMessage = @import("windows_fns.zig").TranslateMessage;
 pub const UpdateWindow = @import("windows_fns.zig").UpdateWindow;
 pub const UnregisterClassW = @import("windows_fns.zig").UnregisterClassW;
 // Structs
