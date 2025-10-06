@@ -834,18 +834,16 @@ fn recordCommandBuffer(
     command_buffer: vk.CommandBuffer,
     image_index: u32,
 ) !void {
-    // command buffer
+    // begin command buffer
     const cb_begin_info = vk.CommandBufferBeginInfo{};
     switch (vk.beginCommandBuffer(command_buffer, &cb_begin_info)) {
         .success => {},
         else => return error.FailedToRecordCommandBuffer,
     }
     // render pass
-    const clear_color: vk.ClearValue = .{
-        .color = .{
-            .float32 = [4]f32{ 0, 0, 0, 1 },
-        },
-    };
+    const clear_color: vk.ClearValue = .{ .color = .{
+        .float32 = [4]f32{ 0, 0, 0, 1 },
+    } };
     const rp_begin_info = vk.RenderPassBeginInfo{
         .render_pass = self.render_pass,
         .framebuffer = self.framebuffers[image_index],
@@ -857,29 +855,30 @@ fn recordCommandBuffer(
         .p_clear_values = &clear_color,
     };
     vk.cmdBeginRenderPass(command_buffer, &rp_begin_info, .@"inline");
-    // bind
-    vk.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
-    // fixed functions
-    const viewport = vk.Viewport{
-        .x = 0,
-        .y = 0,
-        .width = @floatFromInt(self.extent.width),
-        .height = @floatFromInt(self.extent.height),
-        .min_depth = 0,
-        .max_depth = 1,
-    };
-    vk.cmdSetViewport(command_buffer, 0, 1, &viewport);
+    {
+        // bind
+        vk.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
+        // fixed functions
+        const viewport = vk.Viewport{
+            .x = 0,
+            .y = 0,
+            .width = @floatFromInt(self.extent.width),
+            .height = @floatFromInt(self.extent.height),
+            .min_depth = 0,
+            .max_depth = 1,
+        };
+        vk.cmdSetViewport(command_buffer, 0, 1, &viewport);
 
-    const scissor = vk.Rect2D{
-        .offset = .{ .x = 0, .y = 0 },
-        .extent = self.extent,
-    };
-    vk.cmdSetScissor(command_buffer, 0, 1, &scissor);
-    // draw
-    vk.cmdDraw(command_buffer, 3, 1, 0, 0);
+        const scissor = vk.Rect2D{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = self.extent,
+        };
+        vk.cmdSetScissor(command_buffer, 0, 1, &scissor);
+        // draw
+        vk.cmdDraw(command_buffer, 3, 1, 0, 0);
+    }
     // cleanup
     vk.cmdEndRenderPass(command_buffer);
-
     switch (vk.endCommandBuffer(command_buffer)) {
         .success => {},
         else => return error.FailedToRecordCommandBuffer,
@@ -956,7 +955,9 @@ fn drawFrame(self: *Engine) !void {
     const wait_semaphores = [_]vk.Semaphore{
         self.image_available_semaphores[self.current_frame],
     };
-    const wait_stages = [_]vk.PipelineStageFlags{.init(.color_attachment_output_bit)};
+    const wait_stages = [_]vk.PipelineStageFlags{
+        .init(.color_attachment_output_bit),
+    };
     const signal_semaphores = [_]vk.Semaphore{
         self.render_finished_semaphores[self.current_frame],
     };
