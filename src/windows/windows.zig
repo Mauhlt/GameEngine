@@ -27,6 +27,7 @@ pub const WPARAM = @import("windows_types.zig").WPARAM;
 // Fns
 pub const CreateWindowExW = @import("windows_fns.zig").CreateWindowExW;
 pub const DefWindowProcW = @import("windows_fns.zig").DefWindowProcW;
+pub const DispatchMessageW = @import("windows_fns.zig").DispatchMessageW;
 pub const GetMessageW = @import("windows_fns.zig").GetMessageW;
 pub const GetModuleHandleW = @import("windows_fns.zig").GetModuleHandleW;
 pub const GetSysColorBrush = @import("windows_fns.zig").GetSysColorBrush;

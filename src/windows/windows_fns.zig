@@ -31,7 +31,7 @@ pub extern "user32" fn DefWindowProcW(
     wParam: t.WPARAM,
     lParam: t.LPARAM,
 ) callconv(.winapi) t.LRESULT;
-pub extern "user32" fn DisptachMessageW(msg: *const s.MSG) callconv(.winapi) t.LRESULT;
+pub extern "user32" fn DispatchMessageW(msg: *const s.MSG) callconv(.winapi) t.LRESULT;
 pub extern "user32" fn GetMessageW(
     msg: *s.MSG,
     hwnd: t.HWND,
