@@ -6,8 +6,12 @@ const std = @import("std");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
 // imports
+const win = @import("windws\\windows.zig");
 const WindowHandle = @import("window_handle.zig");
+const WindowSize = @import("WindowSize.zig");
+
 const vk = @import("..\\vulkan\\vulkan.zig");
+
 const QFI = @import("QueueFamilyIndices.zig");
 const SSD = @import("SwapchainSupportDetails.zig");
 const Vertex = @import("Vertex.zig");
@@ -69,7 +73,7 @@ is_framebuffer_resized: bool = false,
 
 pub fn init(allo: Allocator) !Engine {
     var self: Engine = .{};
-    self.window = try initWindow(800, 600);
+    self.window = try WindowHandle.init("ZigWindowClass", "Zig Unicode Window", 800, 600);
     self.instance = try createInstance();
     self.surface = try self.createSurface();
     self.physical_device = try self.pickPhysicalDevice();
@@ -138,16 +142,6 @@ pub fn deinit(self: *Engine) void {
     vk.destroyDevice(self.logical_device, null);
     vk.destroySurfaceKHR(self.instance, self.surface, null);
     vk.destroyInstance(self.instance, null);
-    self.deinitWindow();
-}
-
-fn initWindow(w: u32, h: u32) !WindowHandle.WindowHandle {
-    const name = "ZigWindowClass";
-    const title = "Zig Unicode Window";
-    return WindowHandle.init(name, title, w, h);
-}
-
-fn deinitWindow(self: *Engine) void {
     self.window.deinit();
 }
 
