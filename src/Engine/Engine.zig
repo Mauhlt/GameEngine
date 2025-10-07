@@ -44,7 +44,7 @@ present_queue: vk.Queue = .null,
 swapchain: vk.SwapchainKHR = .null,
 images: [MAX_FRAMES_IN_FLIGHT]vk.Image = //
     [_]vk.Image{.null} ** MAX_FRAMES_IN_FLIGHT,
-views: [MAX_FRAMES_IN_FLIGHT]vk.ImageView = //
+image_views: [MAX_FRAMES_IN_FLIGHT]vk.ImageView = //
     [_]vk.ImageView{.null} ** MAX_FRAMES_IN_FLIGHT,
 format: vk.Format = undefined,
 extent: vk.Extent2D = undefined,
@@ -84,7 +84,7 @@ pub fn init(allo: Allocator) !Engine {
     self.extent = try self.createSwapchainExtent();
     self.format = try self.createSwapchainFormat();
     try self.createSwapchainImages(&self.images);
-    try self.createSwapchainImageViews(&self.views);
+    try self.createSwapchainImageViews(&self.image_views);
     try self.createFramebuffers(&self.framebuffers);
     // pipeline
     self.render_pass = try self.createRenderPass();
@@ -327,7 +327,7 @@ fn ratePhysicalDeviceSuitability(device: vk.PhysicalDevice) i32 {
 fn createLogicalDevice(self: *Engine) !vk.Device {
     const indices = try QFI.init(self.physical_device, self.surface);
     var priority: f32 = 1.0;
-    // 2 for amd, 1 for nvidia
+    // 2 for AMD, 1 for NVIDIA
     const queue_create_infos = [_]vk.DeviceQueueCreateInfo{
         .{
             .queue_family_index = indices.graphics_family.?,
@@ -340,39 +340,35 @@ fn createLogicalDevice(self: *Engine) !vk.Device {
             .p_queue_priorities = @ptrCast(&priority),
         },
     };
-    var feats: vk.PhysicalDeviceFeatures = .{}; // has version 2
-    const len: u32 = if (indices.present_family == indices.graphics_family) //
-        1 //
-    else //
-        @truncate(queue_create_infos.len);
+    // has version 2
+    var device_feats: vk.PhysicalDeviceFeatures = .{};
+    const len: u32 = if (indices.isSameFamily()) 1 else @truncate(queue_create_infos.len);
+
     const create_info: vk.DeviceCreateInfo = .{
         .queue_create_info_count = len,
         .p_queue_create_infos = &queue_create_infos,
-        .p_enabled_features = &feats,
+        .p_enabled_features = &device_feats,
         .enabled_extension_count = @truncate(required_device_extensions.len),
-        .pp_enabled_extension_names = @ptrCast(&required_device_extensions),
+        .pp_enabled_extension_names = &required_device_extensions,
         .enabled_layer_count = 0,
         .pp_enabled_layer_names = null,
     };
 
-    var logical_device: vk.Device = .null;
+    var device: vk.Device = .null;
     try switch (vk.createDevice(
         self.physical_device,
         &create_info,
         null,
-        &logical_device,
+        &device,
     )) {
         .success => {},
         else => error.FailedToCreateLogicalDevice,
     };
+    // get device queues
     // below has version 2
-    vk.getDeviceQueue(
-        logical_device,
-        indices.graphics_family.?,
-        0,
-        &self.graphics_queue,
-    );
-    return logical_device;
+    vk.getDeviceQueue(device, indices.graphics_family.?, 0, &self.graphics_queue);
+    vk.getDeviceQueue(device, indices.present_family.?, 0, &self.present_queue);
+    return device;
 }
 
 fn createSwapchain(self: *Engine) !vk.SwapchainKHR {
@@ -757,7 +753,7 @@ fn createFramebuffers(
 ) !void {
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         const attachments = [_]vk.ImageView{
-            self.views[i],
+            self.image_views[i],
         };
 
         const create_info = vk.FramebufferCreateInfo{
@@ -1027,29 +1023,32 @@ fn drawFrame(self: *Engine) !void {
 }
 
 fn recreateSwapchain(self: *Engine) void {
-    var w: i32, var h: i32 = self.window.getWindowSize();
-    while (w == 0 or h == 0) {
-        // check if minimized using messages
-        // wParam == SC_MINIMIZE or wParam == SIZE_MINIMIZED
-        // or check isIconic(hwnd) - return bool if minimized
-        // or GetWindowPplacement(hwnd, &placement) == SW_SHOWMINIMIZED
-        w, h = self.window.getWindowSize();
-    }
+    // var w: i32, var h: i32 = self.window.getWindowSize();
+    // while (w == 0 or h == 0) {
+    //     // check if minimized using messages
+    //     // wParam == SC_MINIMIZE or wParam == SIZE_MINIMIZED
+    //     // or check isIconic(hwnd) - return bool if minimized
+    //     // or GetWindowPplacement(hwnd, &placement) == SW_SHOWMINIMIZED
+    //     w, h = self.window.getWindowSize();
+    // }
     // wait
     vk.deviceWaitIdle(self.logical_device);
     // cleanup
     try self.destroySwapchain();
     // recreate
-    try self.createSwapchain();
-    try self.createSwapchainImageViews(self.views);
-    try self.createFramebuffers(self.framebuffers);
+    self.swapchain = try self.createSwapchain();
+    self.extent = try self.createSwapchainExtent();
+    self.format = try self.createSwapchainFormat();
+    try self.createSwapchainImages(&self.images);
+    try self.createSwapchainImageViews(&self.image_views);
+    try self.createFramebuffers(&self.framebuffers);
 }
 
 fn destroySwapchain(self: *Engine) void {
-    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-        vk.destroyFramebuffer(self.logical_device, self.framebuffers[i], null);
-        vk.destroyImageView(self.logical_device, self.views[i], null);
-    }
+    for (self.framebuffers) |framebuffer| //
+        vk.destroyFramebuffer(self.logical_device, framebuffer, null);
+
+    for (self.views) |view| vk.destroyImageView(self.logical_device, view, null);
     vk.destroySwapchainKHR(self.logical_device, self.swapchain, null);
 }
 

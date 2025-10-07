@@ -26,10 +26,11 @@ pub fn init(
     var indices: QueueFamilyIndices = .{};
     var present_support: vk.Bool32 = .false;
     for (queues[0..n_queues], 0..) |queue, i| {
+        // find graphics support
         if (queue.queue_flags.contains(.graphics_bit)) {
             indices.graphics_family = @truncate(i);
         }
-
+        // find present support
         switch (vk.getPhysicalDeviceSurfaceSupportKHR(
             physical_device,
             @truncate(i),
@@ -39,7 +40,6 @@ pub fn init(
             .success => {},
             else => return error.FailedToGetPhysicalDeviceSurfaceSupportKHR,
         }
-
         switch (present_support) {
             .true => {
                 indices.present_family = @truncate(i);
@@ -47,6 +47,7 @@ pub fn init(
             },
             else => {},
         }
+        // check if complete
         if (indices.isComplete()) return indices;
     }
 
