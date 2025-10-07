@@ -1,4 +1,4 @@
-const win = @import("windows\\windows.zig");
+const win = @import("..\\windows\\windows.zig");
 const WindowSize = @This();
 
 w: u32 = 0,

@@ -5,13 +5,13 @@
 const std = @import("std");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
-// imports
-const win = @import("windws\\windows.zig");
-const WindowHandle = @import("window_handle.zig");
+// window
+const win = @import("..\\windows\\windows.zig");
+const WindowHandle = @import("WindowHandle.zig");
 const WindowSize = @import("WindowSize.zig");
-
+// vulkan
 const vk = @import("..\\vulkan\\vulkan.zig");
-
+// custom data structs
 const QFI = @import("QueueFamilyIndices.zig");
 const SSD = @import("SwapchainSupportDetails.zig");
 const Vertex = @import("Vertex.zig");
@@ -26,13 +26,13 @@ const required_device_extensions = [_][*:0]const u8{
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 // Vertices
 const triangle_vertices = [_]Vertex{
-    .{ .{ 0.0, -0.5 }, .{ 1.0, 0.0, 0.0 } },
-    .{ .{ 0.5, 0.5 }, .{ 0.0, 1.0, 0.0 } },
-    .{ .{ -0.5, 0.5 }, .{ 0.0, 0.0, 1.0 } },
+    .{ .pos = [_]f32{ 0.0, -0.5 }, .color = [_]f32{ 1.0, 0.0, 0.0 } },
+    .{ .pos = [_]f32{ 0.5, 0.5 }, .color = [_]f32{ 0.0, 1.0, 0.0 } },
+    .{ .pos = [_]f32{ -0.5, 0.5 }, .color = [_]f32{ 0.0, 0.0, 1.0 } },
 };
 const Engine = @This();
 // Fields
-window: WindowHandle.WindowHandle = undefined,
+window: WindowHandle = undefined,
 instance: vk.Instance = .null,
 surface: vk.SurfaceKHR = .null,
 physical_device: vk.PhysicalDevice = .null,
@@ -69,19 +69,20 @@ in_flight_fences: [MAX_FRAMES_IN_FLIGHT]vk.Fence = //
     [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT,
 // flags
 current_frame: u32 = 0,
-is_framebuffer_resized: bool = false,
+was_framebuffer_resized: bool = false,
 
 pub fn init(allo: Allocator) !Engine {
     var self: Engine = .{};
+    // base
     self.window = try WindowHandle.init("ZigWindowClass", "Zig Unicode Window", 800, 600);
     self.instance = try createInstance();
     self.surface = try self.createSurface();
     self.physical_device = try self.pickPhysicalDevice();
     self.logical_device = try self.createLogicalDevice();
+    // swapchain
     self.swapchain = try self.createSwapchain();
     self.extent = try self.createSwapchainExtent();
     self.format = try self.createSwapchainFormat();
-    // arrays
     try self.createSwapchainImages(&self.images);
     try self.createSwapchainImageViews(&self.views);
     try self.createFramebuffers(&self.framebuffers);
@@ -89,8 +90,10 @@ pub fn init(allo: Allocator) !Engine {
     self.render_pass = try self.createRenderPass();
     self.pipeline_layout = try self.createGraphicsPipelineLayout();
     self.pipeline = try self.createGraphicsPipeline(allo);
-    // Commands
+    // Commands + Buffers
     self.command_pool = try self.createCommandPool();
+    self.vertex_buffer = try self.createVertexBuffer(&triangle_vertices);
+    self.vertex_buffer_memory = try self.createVertexBufferMemory(self.vertex_buffer);
     try self.createCommandBuffers(&self.command_buffers);
     // sync objects
     for (0..self.image_available_semaphores.len) |i| {
@@ -98,14 +101,11 @@ pub fn init(allo: Allocator) !Engine {
         self.render_finished_semaphores[i] = try self.createSemaphore();
         self.in_flight_fences[i] = try self.createFence();
     }
-    // return
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
-    self.deinitSwapchain();
-    // buffers
-    vk.destroyBuffer(self.logical_device, self.vertex_buffer, null);
+    self.destroySwapchain();
     // pipeline
     vk.destroyPipeline(self.logical_device, self.pipeline, null);
     vk.destroyPipelineLayout(
@@ -114,6 +114,9 @@ pub fn deinit(self: *Engine) void {
         null,
     );
     vk.destroyRenderPass(self.logical_device, self.render_pass, null);
+    // vertex buffer + memory
+    vk.destroyBuffer(self.logical_device, self.vertex_buffer, null);
+    vk.freeMemory(self.logical_device, self.vertex_buffer_memory, null);
     // sync objects
     for (0..self.image_available_semaphores.len) |i| {
         vk.destroySemaphore(
@@ -147,7 +150,7 @@ pub fn deinit(self: *Engine) void {
 
 fn createInstance() !vk.Instance {
     // app info
-    const app_info = vk.ApplicationInfo{
+    const app_info: vk.ApplicationInfo = .{
         .p_application_name = "Curr App",
         .application_version = vk.makeApiVersion(0, 1, 0, 0),
         .p_engine_name = "No Engine",
@@ -229,7 +232,11 @@ fn pickPhysicalDevice(self: *const Engine) !vk.PhysicalDevice {
     if (n_devices == 0) return error.FoundNoPhysicalDevice;
     // get physical devices
     var physical_devices: [16]vk.PhysicalDevice = undefined;
-    switch (vk.enumeratePhysicalDevices(self.instance, &n_devices, &physical_devices)) {
+    switch (vk.enumeratePhysicalDevices(
+        self.instance,
+        &n_devices,
+        &physical_devices,
+    )) {
         .success => {},
         else => return error.FailedToEnumeratePhysicalDevices,
     }
@@ -349,12 +356,22 @@ fn createLogicalDevice(self: *Engine) !vk.Device {
     };
 
     var logical_device: vk.Device = .null;
-    try switch (vk.createDevice(self.physical_device, &create_info, null, &logical_device)) {
+    try switch (vk.createDevice(
+        self.physical_device,
+        &create_info,
+        null,
+        &logical_device,
+    )) {
         .success => {},
         else => error.FailedToCreateLogicalDevice,
     };
     // below has version 2
-    vk.getDeviceQueue(logical_device, indices.graphics_family.?, 0, &self.graphics_queue);
+    vk.getDeviceQueue(
+        logical_device,
+        indices.graphics_family.?,
+        0,
+        &self.graphics_queue,
+    );
     return logical_device;
 }
 
@@ -367,6 +384,7 @@ fn createSwapchain(self: *Engine) !vk.SwapchainKHR {
     var n_images: u32 = ssd.capabilities.min_image_count + 1;
     if (ssd.capabilities.max_image_count > 0 and ssd.capabilities.max_image_count < n_images) //
         n_images = ssd.capabilities.max_image_count;
+    print("# Of Images: {}\n", .{n_images});
 
     const indices = try QFI.init(self.physical_device, self.surface);
     const is_same_family = indices.isSameFamily();
@@ -783,13 +801,20 @@ fn createCommandPool(self: *Engine) !vk.CommandPool {
     };
 }
 
-fn findMemory(self: *Engine, type_filter: u32, props: vk.MemoryPropertyFlags) !u32 {
-    const mem_props = vk.PhysicalDeviceMemoryProperties{};
+fn findMemory(
+    self: *Engine,
+    type_filter: u32,
+    props: []const vk.MemoryPropertyFlagBits,
+) !u32 {
+    var mem_props = vk.PhysicalDeviceMemoryProperties{};
     vk.getPhysicalDeviceMemoryProperties(self.physical_device, &mem_props);
-    for (0..mem_props.memory_type_count) |i| {
-        if (!(type_filter and (1 << i))) continue;
-        if (!(mem_props.memory_types[i].property_flags & props) == props) continue;
-        return i;
+
+    outer: for (0..mem_props.memory_type_count) |i| {
+        if ((type_filter & (@as(u32, 1) << @truncate(i))) == 0) continue;
+        for (props) |prop| {
+            if (mem_props.memory_types[i].property_flags.contains(prop)) continue :outer;
+        }
+        return @truncate(i);
     }
     return error.FailedToFindSuitableMemoryType;
 }
@@ -1001,47 +1026,27 @@ fn drawFrame(self: *Engine) !void {
     self.current_frame = @mod(self.current_frame + 1, MAX_FRAMES_IN_FLIGHT);
 }
 
-pub fn run(self: *Engine) !void {
-    _ = win.ShowWindow(self.window.hwnd, .show);
-    _ = win.UpdateWindow(self.window.hwnd);
-
-    var msg: win.MSG = undefined;
-    while (win.GetMessageW(&msg, self.window.hwnd, 0, 0) != 0) {
-        _ = win.TranslateMessage(&msg);
-        _ = win.DispatchMessageW(&msg);
-        // can switch on msg to get key press
-        try self.drawFrame();
-    }
-
-    switch (vk.deviceWaitIdle(self.logical_device)) {
-        .success => {},
-        else => return error.FailedToIdleDevice,
-    }
-
-    // while (!glfwWindowShouldClose(window)) {
-    //     glfwPollEvents();
-    //     self.drawFrame();
-    // }
-}
-
-fn initSwapchain(self: *Engine) void {
+fn recreateSwapchain(self: *Engine) void {
     var w: i32, var h: i32 = self.window.getWindowSize();
     while (w == 0 or h == 0) {
-        w, h = win.setWindowSize(self.window.hwnd, 0, 0, 800, 600);
+        // check if minimized using messages
+        // wParam == SC_MINIMIZE or wParam == SIZE_MINIMIZED
+        // or check isIconic(hwnd) - return bool if minimized
+        // or GetWindowPplacement(hwnd, &placement) == SW_SHOWMINIMIZED
         w, h = self.window.getWindowSize();
     }
     // wait
     vk.deviceWaitIdle(self.logical_device);
     // cleanup
-    try self.deinitSwapchain();
+    try self.destroySwapchain();
     // recreate
     try self.createSwapchain();
     try self.createSwapchainImageViews(self.views);
     try self.createFramebuffers(self.framebuffers);
 }
 
-fn deinitSwapchain(self: *Engine) void {
-    for (0..self.n_images) |i| {
+fn destroySwapchain(self: *Engine) void {
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         vk.destroyFramebuffer(self.logical_device, self.framebuffers[i], null);
         vk.destroyImageView(self.logical_device, self.views[i], null);
     }
@@ -1050,11 +1055,11 @@ fn deinitSwapchain(self: *Engine) void {
 
 fn createVertexBuffer(
     self: *Engine,
-    vertices: []Vertex,
-) vk.Buffer {
+    vertices: []const Vertex,
+) !vk.Buffer {
     const create_info = vk.BufferCreateInfo{
-        .size = @as(u32, @truncate(@sizeOf(vertices[0]))) * @as(u32, @truncate(vertices.len)),
-        .usage = .vertex_buffer_bit,
+        .size = @truncate(@sizeOf(Vertex) * vertices.len),
+        .usage = .init(.vertex_buffer_bit),
         .sharing_mode = .exclusive,
     };
 
@@ -1073,26 +1078,43 @@ fn createVertexBuffer(
 fn createVertexBufferMemory(
     self: *Engine,
     vertex_buffer: vk.Buffer,
-) vk.DeviceMemory {
+) !vk.DeviceMemory {
     var mem_reqs: vk.MemoryRequirements = .{};
     vk.getBufferMemoryRequirements(self.logical_device, vertex_buffer, &mem_reqs);
 
+    const props = [_]vk.MemoryPropertyFlagBits{ .host_visible_bit, .host_coherent_bit };
     const alloc_info = vk.MemoryAllocateInfo{
         .allocation_size = mem_reqs.size,
-        .memory_type_index = try self.findMemory(
-            mem_reqs.memory_type_bits,
-            .init(.host_visible_bit, .host_coherent_bit),
-        ),
+        .memory_type_index = try self.findMemory(mem_reqs.memory_type_bits, &props),
     };
 
     var vertex_buffer_memory: vk.DeviceMemory = .null;
-    switch (vk.allocateMemory(
+    return switch (vk.allocateMemory(
         self.logical_device,
         &alloc_info,
         null,
         &vertex_buffer_memory,
     )) {
-        .success => {},
+        .success => vertex_buffer_memory,
         else => return error.FailedToAllocateVertexBufferMemory,
-    }
+    };
+}
+
+pub fn run(self: *Engine) !void {
+    self.window.show();
+    // var i: usize = 0;
+    // for (0..10_000_000_000) |_| {
+    //     i += 1;
+    // }
+
+    //
+    // switch (vk.deviceWaitIdle(self.logical_device)) {
+    //     .success => {},
+    //     else => return error.FailedToIdleDevice,
+    // }
+
+    // while (!glfwWindowShouldClose(window)) {
+    //     glfwPollEvents();
+    //     self.drawFrame();
+    // }
 }

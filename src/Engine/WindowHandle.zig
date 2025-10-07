@@ -7,7 +7,12 @@ instance: win.HINSTANCE,
 title: [*:0]const u16,
 hwnd: win.HWND,
 
-pub fn init(name: []const u8, title: []const u8, width: u32, height: u32) WindowHandle {
+pub fn init(
+    comptime name: []const u8,
+    comptime title: []const u8,
+    width: u32,
+    height: u32,
+) !WindowHandle {
     const instance = win.GetModuleHandleW(null);
     // wide strings
     const class_name = utf8ToUtf16(name);
@@ -57,7 +62,20 @@ pub fn init(name: []const u8, title: []const u8, width: u32, height: u32) Window
 
 pub fn deinit(self: *WindowHandle) void {
     _ = win.UnregisterClassW(
-        self.window.title,
-        self.window.instance,
+        self.title,
+        self.instance,
     );
+}
+
+pub fn show(self: *WindowHandle) void {
+    _ = win.ShowWindow(self.hwnd, .show);
+    _ = win.UpdateWindow(self.hwnd);
+}
+
+pub fn poll(self: *WindowHandle) void {
+    var msg: win.MSG = undefined;
+    while (win.GetMessageW(&msg, self.hwnd, 0, 0) != 0) {
+        _ = win.TranslateMessage(&msg);
+        _ = win.DispatchMessageW(&msg);
+    }
 }
