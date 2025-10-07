@@ -58,7 +58,6 @@ pub extern "user32" fn RegisterClassW(
 pub extern "user32" fn RegisterClassExW(
     class: *const s.WNDCLASSEXW,
 ) callconv(.winapi) t.ATOM;
-pub extern "user32" fn ShowWindow(hwnd: t.HWND, show_cmd: e.SW) callconv(.winapi) i32;
 pub extern "user32" fn SetWindowPos(
     hwnd: t.HWND,
     hwnd_insert_after: t.HWND,
@@ -68,6 +67,7 @@ pub extern "user32" fn SetWindowPos(
     h: i32,
     u_flags: e.SWP,
 ) callconv(.winapi) bool;
+pub extern "user32" fn ShowWindow(hwnd: t.HWND, show_cmd: e.SW) callconv(.winapi) i32;
 pub extern "user32" fn TranslateMessage(msg: *const s.MSG) callconv(.winapi) i32;
 pub extern "user32" fn UnregisterClassW(
     class_name: [*:0]const u16,

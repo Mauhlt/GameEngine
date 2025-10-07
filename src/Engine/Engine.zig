@@ -5,10 +5,8 @@
 const std = @import("std");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
-const utf8ToUtf16 = std.unicode.utf8ToUtf16LeStringLiteral;
 // imports
-const win = @import("..\\windows\\windows.zig");
-const WINDOW_HANDLE = @import("window_handle.zig");
+const WindowHandle = @import("window_handle.zig");
 const vk = @import("..\\vulkan\\vulkan.zig");
 const QFI = @import("QueueFamilyIndices.zig");
 const SSD = @import("SwapchainSupportDetails.zig");
@@ -30,7 +28,7 @@ const triangle_vertices = [_]Vertex{
 };
 const Engine = @This();
 // Fields
-window: WINDOW_HANDLE = undefined,
+window: WindowHandle.WindowHandle = undefined,
 instance: vk.Instance = .null,
 surface: vk.SurfaceKHR = .null,
 physical_device: vk.PhysicalDevice = .null,
@@ -143,59 +141,14 @@ pub fn deinit(self: *Engine) void {
     self.deinitWindow();
 }
 
-fn initWindow(w: u32, h: u32) !WINDOW_HANDLE {
-    const instance = win.GetModuleHandleW(null);
-    // wide strings
-    const class_name = utf8ToUtf16("ZigWindowClass");
-    const title = utf8ToUtf16("Zig Unicode Window");
-    // icons + cursors
-    const icon = win.LoadIconW(.null, utf8ToUtf16("IDI_APPLICATION"));
-    const cursor = win.LoadCursorW(.null, utf8ToUtf16("IDC_ARROW"));
-    var wc: win.WNDCLASSEXW = .{
-        .style = win.redraw.bits.mask,
-        .instance = instance,
-        .icon = icon,
-        .cursor = cursor,
-        .brush = win.GetSysColorBrush(.window),
-        .menu_name = null,
-        .class_name = class_name,
-        .small_icon = icon,
-    };
-    // register
-    if (win.RegisterClassExW(&wc) == .null) //
-        return error.FailedToRegisterClass;
-
-    // HWND
-    const hwnd = switch (win.CreateWindowExW(
-        0,
-        class_name,
-        title,
-        win.overlapped_window.bits.mask,
-        100,
-        100,
-        w,
-        h,
-        .null,
-        .null,
-        instance,
-        .null,
-    )) {
-        .null => return error.FailedToCreateWindow,
-        else => |value| value,
-    };
-    return .{
-        .instance = instance,
-        .title = title,
-        .hwnd = hwnd,
-    };
-    // set framebuffer size callback to change window size
+fn initWindow(w: u32, h: u32) !WindowHandle.WindowHandle {
+    const name = "ZigWindowClass";
+    const title = "Zig Unicode Window";
+    return WindowHandle.init(name, title, w, h);
 }
 
 fn deinitWindow(self: *Engine) void {
-    _ = win.UnregisterClassW(
-        self.window.title,
-        self.window.instance,
-    );
+    self.window.deinit();
 }
 
 fn createInstance() !vk.Instance {
@@ -496,7 +449,7 @@ fn createSwapchainImageViews(
     self: *Engine,
     views: *[MAX_FRAMES_IN_FLIGHT]vk.ImageView,
 ) !void {
-    for (0..self.n_images) |i| {
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         const image = self.images[i];
         const create_info = vk.ImageViewCreateInfo{
             .image = image,
@@ -679,13 +632,16 @@ fn createGraphicsPipeline(self: *Engine, allo: Allocator) !vk.Pipeline {
         frag_shader_stage_info,
     };
 
-    const binding_description = Vertex.getBindingDescription();
-    const attribute_descriptions = Vertex.getAttributeDescriptions();
+    var binds: [1]vk.VertexInputBindingDescription = undefined;
+    Vertex.getBindingDescription(&binds);
+    var attrs: [2]vk.VertexInputAttributeDescription = undefined;
+    Vertex.getAttributeDescriptions(&attrs);
+
     const vertex_input_info = vk.PipelineVertexInputStateCreateInfo{
-        .vertex_binding_description_count = @truncate(binding_description.len),
-        .p_vertex_binding_descriptions = &binding_description,
-        .vertex_attribute_description_count = @truncate(attribute_descriptions.len),
-        .p_vertex_attribute_descriptions = &attribute_descriptions,
+        .vertex_binding_description_count = @truncate(binds.len),
+        .p_vertex_binding_descriptions = &binds,
+        .vertex_attribute_description_count = @truncate(attrs.len),
+        .p_vertex_attribute_descriptions = &attrs,
     };
 
     const input_assembly = vk.PipelineInputAssemblyStateCreateInfo{
@@ -787,7 +743,7 @@ fn createFramebuffers(
     self: *Engine,
     framebuffers: *[MAX_FRAMES_IN_FLIGHT]vk.Framebuffer,
 ) !void {
-    for (0..self.n_images) |i| {
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         const attachments = [_]vk.ImageView{
             self.views[i],
         };
@@ -1075,11 +1031,11 @@ pub fn run(self: *Engine) !void {
 }
 
 fn initSwapchain(self: *Engine) void {
-    var w: i32, var h: i32 = win.getWindowSize();
+    var w: i32, var h: i32 = self.window.getWindowSize();
     while (w == 0 or h == 0) {
-        w, h = win.getWindowSize();
+        w, h = win.setWindowSize(self.window.hwnd, 0, 0, 800, 600);
+        w, h = self.window.getWindowSize();
     }
-    win.SetWindowPos();
     // wait
     vk.deviceWaitIdle(self.logical_device);
     // cleanup
