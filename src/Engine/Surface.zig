@@ -3,7 +3,7 @@ const WindowHandle = @import("WindowHandle.zig");
 const Instance = @import("Instance.zig");
 const Surface = @This();
 
-surface: vk.SurfaceKHR,
+surface: vk.SurfaceKHR = .null,
 
 fn init(
     window: *const WindowHandle,

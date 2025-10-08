@@ -1,8 +1,8 @@
 const vk = @import("..\\vulkan\\vulkan.zig");
 const Vertex = @This();
 
-pos: [2]f32,
-color: [3]f32,
+pos: [2]f32 = [_]f32{ 0, 0 },
+color: [3]f32 = [_]f32{ 0, 0, 0 },
 
 pub fn getBindingDescription(binds: *[1]vk.VertexInputBindingDescription) void {
     binds[0] = vk.VertexInputBindingDescription{

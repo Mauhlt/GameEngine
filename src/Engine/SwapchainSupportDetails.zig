@@ -3,11 +3,11 @@ const assert = std.debug.assert;
 const vk = @import("..\\vulkan\\vulkan.zig");
 const SwapchainSupportDetails = @This();
 // has version 2
-capabilities: vk.SurfaceCapabilitiesKHR,
+capabilities: vk.SurfaceCapabilitiesKHR = undefined,
 n_formats: u32 = 0,
-formats: [32]vk.SurfaceFormatKHR,
+formats: [32]vk.SurfaceFormatKHR = undefined,
 n_present_modes: u32 = 0,
-present_modes: [32]vk.PresentModeKHR,
+present_modes: [32]vk.PresentModeKHR = undefined,
 
 pub fn init(
     physical_device: vk.PhysicalDevice,

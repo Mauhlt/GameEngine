@@ -6,7 +6,7 @@ const required_device_extensions = [_][*:0]const u8{
     vk.ExtensionName.swapchain,
 };
 
-physical_device: vk.PhysicalDevice,
+physical_device: vk.PhysicalDevice = .null,
 
 // PickPhysicalDevice
 fn init(

@@ -3,9 +3,9 @@ const win = @import("..\\windows\\windows.zig");
 const utf8ToUtf16 = std.unicode.utf8ToUtf16LeStringLiteral;
 const WindowHandle = @This();
 
-instance: win.HINSTANCE,
+instance: win.HINSTANCE = .null,
 title: [*:0]const u16,
-hwnd: win.HWND,
+hwnd: win.HWND = .null,
 
 pub fn init(
     comptime name: []const u8,

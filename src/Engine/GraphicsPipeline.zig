@@ -4,8 +4,8 @@ const vk = @import("..\\vulkan\\vulkan.zig");
 const Vertex = @import("Vertex.zig");
 const Pipeline = @This();
 
-pipeline_layout: vk.PipelineLayout,
-pipeline: vk.Pipeline,
+pipeline_layout: vk.PipelineLayout = .null,
+pipeline: vk.Pipeline = .null,
 
 pub fn init(
     allo: Allocator,
