@@ -4,11 +4,8 @@ const required_instance_extensions = [_][*:0]const u8{
     vk.ExtensionName.win32_surface,
     vk.ExtensionName.surface,
 };
-const Instance = @This();
 
-instance: vk.Instance = .null,
-
-fn init() !vk.Instance {
+pub fn init() !vk.Instance {
     // app info
     const app_info: vk.ApplicationInfo = .{
         .p_application_name = "Curr App",
@@ -64,8 +61,8 @@ fn init() !vk.Instance {
     };
 }
 
-pub fn deinit(self: *Instance) void {
-    vk.destroyInstance(self.instance, null);
+pub fn deinit(instance: vk.Instance) void {
+    vk.destroyInstance(instance, null);
 }
 
 pub fn printExtensions() void {

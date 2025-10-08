@@ -6,24 +6,26 @@ pool: vk.CommandPool = .null,
 buffers: [2]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** 2,
 
 pub fn init(
-    physical_device: vk.PhysicalDevice,
     surface: vk.SurfaceKHR,
+    physical_device: vk.PhysicalDevice,
+    device: vk.Device,
 ) !CommandPool {
     var self: CommandPool = .{};
-    self.pool = try createCommandPool(physical_device, surface);
-    try createCommandBuffers(&self.buffers);
+    self.pool = try createCommandPoolPool(surface, physical_device, device);
+    try self.createCommandPoolBuffers(device);
+    return self;
 }
 
 pub fn deinit(self: *CommandPool, device: vk.Device) void {
     vk.destroyCommandPool(device, self.pool, null);
 }
 
-fn createCommandPool(
+fn createCommandPoolPool(
+    surface: vk.SurfaceKHR,
     physical_device: vk.PhysicalDevice,
     device: vk.Device,
-    surface: vk.SurfaceKHR,
 ) !vk.CommandPool {
-    const indices = try QFI.init(physical_device, surface);
+    const indices = try QFI.init(surface, physical_device);
 
     const create_info = vk.CommandPoolCreateInfo{
         .flags = .initEmpty(),
@@ -37,20 +39,20 @@ fn createCommandPool(
     };
 }
 
-fn createCommandBuffers(
+fn createCommandPoolBuffers(
     self: *CommandPool,
     device: vk.Device,
 ) !void {
     const alloc_info = vk.CommandBufferAllocateInfo{
-        .command_pool = self.command_pool,
+        .command_pool = self.pool,
         .level = .primary,
-        .command_buffer_count = @truncate(self.command_buffers.len),
+        .command_buffer_count = @truncate(self.buffers.len),
     };
 
     return switch (vk.allocateCommandBuffers(
         device,
         &alloc_info,
-        &self.command_buffers,
+        &self.buffers,
     )) {
         .success => {},
         else => return error.FailedToAllocateCommandBuffers,

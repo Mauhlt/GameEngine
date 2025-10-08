@@ -1,17 +1,12 @@
 const vk = @import("..\\vulkan\\vulkan.zig");
 const RenderPass = @This();
 
-render_pass: vk.RenderPass = .null,
-
-pub fn init(device: vk.Device, format: vk.Format) !RenderPass {
-    const render_pass = try createRenderPass(device, format);
-    return RenderPass{
-        .render_pass = render_pass,
-    };
+pub fn init(device: vk.Device, format: vk.Format) !vk.RenderPass {
+    return createRenderPass(device, format);
 }
 
-pub fn deinit(self: *RenderPass, device: vk.Device) void {
-    vk.destroyRenderPass(device, self.render_pass, null);
+pub fn deinit(device: vk.Device, render_pass: vk.RenderPass) void {
+    vk.destroyRenderPass(device, render_pass, null);
 }
 
 fn createRenderPass(

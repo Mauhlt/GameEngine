@@ -5,8 +5,8 @@ graphics_family: ?u32 = null,
 present_family: ?u32 = null,
 
 pub fn init(
-    physical_device: vk.PhysicalDevice,
     surface: vk.SurfaceKHR,
+    physical_device: vk.PhysicalDevice,
 ) !QueueFamilyIndices {
     // get queues
     // has version 2

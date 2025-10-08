@@ -5,11 +5,17 @@ const SSD = @import("SwapchainSupportDetails.zig");
 const required_device_extensions = [_][*:0]const u8{
     vk.ExtensionName.swapchain,
 };
-
-physical_device: vk.PhysicalDevice = .null,
+const PhysicalDevice = @This();
 
 // PickPhysicalDevice
-fn init(
+pub fn init(
+    instance: vk.Instance,
+    surface: vk.SurfaceKHR,
+) !vk.PhysicalDevice {
+    return pickPhysicalDevice(instance, surface);
+}
+
+fn pickPhysicalDevice(
     instance: vk.Instance,
     surface: vk.SurfaceKHR,
 ) !vk.PhysicalDevice {
@@ -32,7 +38,7 @@ fn init(
     }
     // get physical device
     for (physical_devices[0..n_devices]) |physical_device| {
-        const is_device_suitable = try isDeviceSuitable(physical_device, surface);
+        const is_device_suitable = try isDeviceSuitable(surface, physical_device);
         if (is_device_suitable) return physical_device;
     }
     // default
@@ -40,8 +46,8 @@ fn init(
 }
 
 // simplest
-fn isDeviceSuitable(device: vk.PhysicalDevice, surface: vk.SurfaceKHR) !bool {
-    const qfi = try QFI.init(device, surface);
+fn isDeviceSuitable(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) !bool {
+    const qfi = try QFI.init(surface, device);
     if (!qfi.isComplete()) return false;
     if (!checkDeviceExtensionSupport(device)) return false;
     const ssd = try SSD.init(device, surface);

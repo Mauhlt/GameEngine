@@ -12,9 +12,7 @@ const WindowSize = @import("WindowSize.zig");
 // vulkan
 const vk = @import("..\\vulkan\\vulkan.zig");
 // custom data structs
-const QFI = @import("QueueFamilyIndices.zig");
-const SSD = @import("SwapchainSupportDetails.zig");
-const Vertex = @import("Vertex.zig");
+const Vertices = @import("Vertices.zig");
 const Instance = @import("Instance.zig");
 const Surface = @import("Surface.zig");
 const PhysicalDevice = @import("PhysicalDevice.zig");
@@ -28,7 +26,7 @@ const SyncObjects = @import("SyncObjects.zig");
 // Extensions
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 // Vertices
-const triangle_vertices = [_]Vertex{
+const triangle_vertices = [_]Vertices{
     .{ .pos = [_]f32{ 0.0, -0.5 }, .color = [_]f32{ 1.0, 0.0, 0.0 } },
     .{ .pos = [_]f32{ 0.5, 0.5 }, .color = [_]f32{ 0.0, 1.0, 0.0 } },
     .{ .pos = [_]f32{ -0.5, 0.5 }, .color = [_]f32{ 0.0, 0.0, 1.0 } },
@@ -36,12 +34,12 @@ const triangle_vertices = [_]Vertex{
 const Engine = @This();
 // Fields
 window: WindowHandle = undefined,
-instance: Instance = .{},
-surface: Surface = .{},
-physical_device: PhysicalDevice = .{},
+instance: vk.Instance = .null,
+surface: vk.SurfaceKHR = .null,
+physical_device: vk.PhysicalDevice = .null,
 device: Device = .{},
 swapchain: Swapchain = .{},
-render_pass: RenderPass = .{},
+render_pass: vk.RenderPass = .null,
 pipeline: Pipeline = .{},
 command_pool: CommandPool = .{},
 vertex_buffer: VertexBuffer = .{},
@@ -51,32 +49,55 @@ current_frame: u32 = 0,
 was_framebuffer_resized: bool = false,
 
 pub fn init(allo: Allocator) !Engine {
-    _ = allo;
     var self: Engine = .{};
-    self.window = try WindowHandle.init("ZigWindowClass", "Zig Unicode Window", 800, 600);
+    self.window = try WindowHandle.init(
+        "ZigWindowClass",
+        "Zig Unicode Window",
+        800,
+        600,
+    );
     self.instance = try Instance.init();
-    // self.surface = try Surface.init();
-    // self.physical_device = try PhysicalDevice.init();
-    // self.device = try Device.init();
-    // self.swapchain = try Swapchain.init();
-    // self.render_pass = try RenderPass.init();
-    // self.pipeline = try Pipeline.init();
-    // self.command_pool = try CommandPool.init();
-    // self.vertex_buffer = try VertexBuffer.init();
-    // self.sync_objects = try SyncObjects.init();
+    self.surface = try Surface.init(&self.window, self.instance);
+    self.physical_device = try PhysicalDevice.init(
+        self.instance,
+        self.surface,
+    );
+    self.device = try Device.init(self.surface, self.physical_device);
+    self.swapchain = try Swapchain.init1(
+        self.surface,
+        self.physical_device,
+        self.device.handle,
+    );
+    self.render_pass = try RenderPass.init(self.device.handle, self.swapchain.format);
+    try self.swapchain.createSwapchainFramebuffers(
+        self.device.handle,
+        self.render_pass,
+    );
+    self.pipeline = try Pipeline.init(allo, self.device.handle, self.render_pass);
+    self.command_pool = try CommandPool.init(
+        self.surface,
+        self.physical_device,
+        self.device.handle,
+    );
+    self.vertex_buffer = try VertexBuffer.init(
+        self.physical_device,
+        self.device.handle,
+        &triangle_vertices,
+    );
+    self.sync_objects = try SyncObjects.init(self.device.handle);
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
-    // self.sync_objects.deinit();
-    // self.vertex_buffer.deinit();
-    // self.command_pool.deinit();
-    // self.pipeline.deinit();
-    // self.render_pass.deinit();
-    // self.swapchain.deinit();
-    // self.device.deinit();
-    // self.surface.deinit();
-    self.instance.deinit();
+    self.sync_objects.deinit(self.device.handle);
+    self.vertex_buffer.deinit(self.device.handle);
+    self.command_pool.deinit(self.device.handle);
+    self.pipeline.deinit(self.device.handle);
+    RenderPass.deinit(self.device.handle, self.render_pass);
+    self.swapchain.deinit(self.device.handle);
+    self.device.deinit();
+    Surface.deinit(self.surface, self.instance);
+    Instance.deinit(self.instance);
     self.window.deinit();
 }
 

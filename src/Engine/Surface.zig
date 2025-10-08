@@ -3,12 +3,18 @@ const WindowHandle = @import("WindowHandle.zig");
 const Instance = @import("Instance.zig");
 const Surface = @This();
 
-surface: vk.SurfaceKHR = .null,
-
-fn init(
+pub fn init(
     window: *const WindowHandle,
-    instance: Instance,
+    instance: vk.Instance,
 ) !vk.SurfaceKHR {
+    return try createSurface(window, instance);
+}
+
+pub fn deinit(surface: vk.SurfaceKHR, instance: vk.Instance) void {
+    vk.destroySurfaceKHR(instance, surface, null);
+}
+
+fn createSurface(window: *const WindowHandle, instance: vk.Instance) !vk.SurfaceKHR {
     const create_info = vk.Win32SurfaceCreateInfoKHR{
         .hwnd = window.hwnd,
         .hinstance = window.instance,
@@ -21,11 +27,7 @@ fn init(
         null,
         &surface,
     )) {
-        .success => Surface{ .surface = surface },
+        .success => surface,
         else => error.FailedToCreateSurface,
     };
-}
-
-pub fn deinit(self: *Surface, instance: vk.Instance) void {
-    vk.destroySurfaceKHR(instance, self.surface, null);
 }

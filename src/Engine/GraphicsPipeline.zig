@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const vk = @import("..\\vulkan\\vulkan.zig");
-const Vertex = @import("Vertex.zig");
+const Vertices = @import("Vertices.zig");
 const Pipeline = @This();
 
 pipeline_layout: vk.PipelineLayout = .null,
@@ -13,8 +13,12 @@ pub fn init(
     render_pass: vk.RenderPass,
 ) !Pipeline {
     const pipeline_layout = try createGraphicsPipelineLayout(device);
-    const pipeline = try createGraphicsPipeline(allo, device, render_pass);
-
+    const pipeline = try createGraphicsPipeline(
+        allo,
+        device,
+        render_pass,
+        pipeline_layout,
+    );
     return Pipeline{
         .pipeline_layout = pipeline_layout,
         .pipeline = pipeline,
@@ -61,10 +65,10 @@ fn createGraphicsPipeline(
     defer allo.free(frag_spv);
 
     // create shader modules
-    const vert_sm = try createShaderModule(vert_spv);
+    const vert_sm = try createShaderModule(device, vert_spv);
     defer vk.destroyShaderModule(device, vert_sm, null);
 
-    const frag_sm = try createShaderModule(frag_spv);
+    const frag_sm = try createShaderModule(device, frag_spv);
     defer vk.destroyShaderModule(device, frag_sm, null);
 
     const vert_shader_stage_info = vk.PipelineShaderStageCreateInfo{
@@ -85,9 +89,9 @@ fn createGraphicsPipeline(
     };
 
     var binds: [1]vk.VertexInputBindingDescription = undefined;
-    Vertex.getBindingDescription(&binds);
+    Vertices.getBindingDescription(&binds);
     var attrs: [2]vk.VertexInputAttributeDescription = undefined;
-    Vertex.getAttributeDescriptions(&attrs);
+    Vertices.getAttributeDescriptions(&attrs);
 
     const vertex_input_info = vk.PipelineVertexInputStateCreateInfo{
         .vertex_binding_description_count = @truncate(binds.len),
@@ -178,14 +182,7 @@ fn createGraphicsPipeline(
     };
 
     var pipeline: vk.Pipeline = .null;
-    return switch (vk.createGraphicsPipelines(
-        self.logical_device,
-        .null,
-        1,
-        &create_info,
-        null,
-        &pipeline,
-    )) {
+    return switch (vk.createGraphicsPipelines(device, .null, 1, &create_info, null, &pipeline)) {
         .success => pipeline,
         else => error.FailedToCreateGraphicsPipeline,
     };

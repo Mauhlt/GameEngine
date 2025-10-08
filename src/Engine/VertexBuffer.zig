@@ -1,39 +1,39 @@
 const vk = @import("..\\vulkan\\vulkan.zig");
-const Vertex = @import("Vertex.zig");
+const Vertices = @import("Vertices.zig");
 const VertexBuffer = @This();
 
-vertex_buffer: vk.Buffer = .null,
-vertex_device_memory: vk.DeviceMemory = .null,
+buffer: vk.Buffer = .null,
+device_memory: vk.DeviceMemory = .null,
 
 pub fn init(
     physical_device: vk.PhysicalDevice,
     device: vk.Device,
-    vertices: []Vertex,
+    vertices: []const Vertices,
 ) !VertexBuffer {
-    const vertex_buffer = try createVertexBuffer(device, vertices);
-    const vertex_device_memory = try createVertexBufferMemory(
+    const buffer = try createVertexBuffer(device, vertices);
+    const device_memory = try createVertexBufferMemory(
         physical_device,
         device,
-        vertex_buffer,
+        buffer,
     );
 
     return .{
-        .vertex_buffer = vertex_buffer,
-        .vertex_device_memory = vertex_device_memory,
+        .buffer = buffer,
+        .device_memory = device_memory,
     };
 }
 
 pub fn deinit(self: *VertexBuffer, device: vk.Device) void {
-    vk.destroyBuffer(device, self.vertex_buffer, null);
-    vk.freeMemory(device, self.vertex_buffer_memory, null);
+    vk.destroyBuffer(device, self.buffer, null);
+    vk.freeMemory(device, self.device_memory, null);
 }
 
 fn createVertexBuffer(
     device: vk.Device,
-    vertices: []const Vertex,
+    vertices: []const Vertices,
 ) !vk.Buffer {
     const create_info = vk.BufferCreateInfo{
-        .size = @truncate(@sizeOf(Vertex) * vertices.len),
+        .size = @truncate(@sizeOf(Vertices) * vertices.len),
         .usage = .init(.vertex_buffer_bit),
         .sharing_mode = .exclusive,
     };
@@ -63,9 +63,9 @@ fn createVertexBufferMemory(
         ),
     };
 
-    var vertex_buffer_memory: vk.DeviceMemory = .null;
-    return switch (vk.allocateMemory(device, &alloc_info, null, &vertex_buffer_memory)) {
-        .success => vertex_buffer_memory,
+    var buffer_memory: vk.DeviceMemory = .null;
+    return switch (vk.allocateMemory(device, &alloc_info, null, &buffer_memory)) {
+        .success => buffer_memory,
         else => return error.FailedToAllocateVertexBufferMemory,
     };
 }

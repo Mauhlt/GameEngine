@@ -6,15 +6,15 @@ const required_device_extensions = [_][*:0]const u8{
 };
 const Device = @This();
 
-device: vk.Device = .null,
+handle: vk.Device = .null,
 graphics_queue: vk.Queue = .null,
 present_queue: vk.Queue = .null,
 
-fn init(
-    physical_device: vk.PhysicalDevice,
+pub fn init(
     surface: vk.SurfaceKHR,
+    physical_device: vk.PhysicalDevice,
 ) !Device {
-    const indices = try QFI.init(physical_device, surface);
+    const indices = try QFI.init(surface, physical_device);
     var priority: f32 = 1.0;
     // 2 for AMD, 1 for NVIDIA
     const queue_create_infos = [_]vk.DeviceQueueCreateInfo{
@@ -60,12 +60,12 @@ fn init(
     vk.getDeviceQueue(device, indices.present_family.?, 0, &present_queue);
     // return device
     return Device{
-        .device = device,
+        .handle = device,
         .graphics_queue = graphics_queue,
         .present_queue = present_queue,
     };
 }
 
 pub fn deinit(self: *Device) void {
-    vk.destroyDevice(self.device, null);
+    vk.destroyDevice(self.handle, null);
 }
