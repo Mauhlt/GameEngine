@@ -22,6 +22,8 @@ graphics_queue: vk.Queue = .null,
 present_queue: vk.Queue = .null,
 // Swapchain
 swapchain: vk.SwapchainKHR = .null,
+format: vk.SurfaceFormatKHR,
+extent: vk.Extent2D,
 n_images: u32 = 0,
 images: [3]vk.Image = [_]vk.Image{.null} ** 3,
 image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
@@ -52,14 +54,20 @@ pub fn init(
     const present_queue = getDeviceQueue(device, indices.present_family);
 
     const ssd = try SSD.init(surface, physical_device);
-    const swapchain = try createSwapchain(&window, surface, physical_device, device, &ssd);
-    const n_images = try getNumImages(device, swapchain);
+    const swapchain = try createSwapchain(
+        &window,
+        surface,
+        physical_device,
+        device,
+        &ssd,
+    );
+    var n_images = try getNumImages(device, swapchain);
     var images: [3]vk.Image = [_]vk.Image{.null} ** 3;
     try getImages(device, swapchain, &n_images, &images);
     const format = ssd.chooseFormat();
-    const extent = ssd.chooseExtent();
+    const extent = ssd.chooseExtent(&window);
     var image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3;
-    try createImageViews(device, format, n_images, &images, &image_views);
+    try createImageViews(device, format.format, n_images, &images, &image_views);
 
     window.show();
     return Engine{
@@ -74,15 +82,16 @@ pub fn init(
         .present_queue = present_queue,
         // swapchain
         .swapchain = swapchain,
-        .n_images = n_images,
-        .images = images,
         .format = format,
         .extent = extent,
+        .n_images = n_images,
+        .images = images,
+        .image_views = image_views,
     };
 }
 
 pub fn deinit(self: *Engine) void {
-    for (self.image_views[0..self.n_images]) |*image_view| //
+    for (self.image_views) |image_view| //
         vk.destroyImageView(self.device, image_view, null);
     vk.destroySwapchainKHR(self.device, self.swapchain, null);
     vk.destroyDevice(self.device, null);
@@ -296,7 +305,7 @@ fn createSwapchain(
     const present_mode = ssd.choosePresentMode();
     const extent = ssd.chooseExtent(window);
     const n_images = if (ssd.capabilities.max_image_count > 0 //
-    and ssd.capabilities.max_image_count < ssd.min_image_count + 1) //
+    and ssd.capabilities.max_image_count < ssd.capabilities.min_image_count + 1) //
         ssd.capabilities.max_image_count
     else
         ssd.capabilities.min_image_count;
@@ -311,7 +320,7 @@ fn createSwapchain(
         .image_color_space = format.color_space,
         .image_extent = extent,
         .image_array_layers = 1,
-        .image_usage = .color_attachment_bit,
+        .image_usage = .init(.color_attachment_bit),
         .image_sharing_mode = if (is_same_family) .exclusive else .concurrent,
         .queue_family_index_count = if (is_same_family) 0 else 2,
         .p_queue_family_indices = if (is_same_family) null else &qfis,
@@ -343,7 +352,7 @@ fn getImages(
     n_images: *u32,
     images: *[3]vk.Image,
 ) !void {
-    switch (vk.getSwapchainImagesKHR(device, swapchain, &n_images, images)) {
+    switch (vk.getSwapchainImagesKHR(device, swapchain, n_images, images)) {
         .success => {},
         else => return error.FailedToGetSwapchainImages,
     }
@@ -367,11 +376,13 @@ fn createImageViews(
                 .b = .identity,
                 .a = .identity,
             },
-            .aspect_mask = .color_bit,
-            .base_mip_level = 0,
-            .level_count = 1,
-            .base_array_layer = 0,
-            .layer_count = 1,
+            .subresource_range = .{
+                .aspect_mask = .init(.color_bit),
+                .base_mip_level = 0,
+                .level_count = 1,
+                .base_array_layer = 0,
+                .layer_count = 1,
+            },
         };
 
         var image_view: vk.ImageView = .null;

@@ -25,7 +25,6 @@ pub extern "user32" fn CreateWindowExW(
     instance: t.HINSTANCE,
     lpParam: t.LPVOID,
 ) callconv(.winapi) t.HWND;
-pub extern "user32" fn GetClientRect(hwnd: t.HWND, rect: t.RECT) callconv(.winapi) bool;
 pub extern "user32" fn DefWindowProcW(
     hwnd: t.HWND,
     msg: u32,
@@ -44,6 +43,14 @@ pub extern "kernel32" fn GetModuleHandleW(
 ) callconv(.winapi) t.HINSTANCE;
 pub extern "gdi32" fn GetSysColorBrush(index: e.Color) callconv(.winapi) t.HBRUSH;
 pub extern "user32" fn GetSystemMetrics(n_index: e.SystemMetrics) callconv(.winapi) i32;
+pub extern "user32" fn GetClientRect(
+    hwnd: t.HWND,
+    rect: *s.RECT,
+) callconv(.winapi) bool;
+pub extern "user32" fn GetWindowRect(
+    hwnd: t.HWND,
+    rect: *s.RECT,
+) callconv(.winapi) bool;
 pub extern "user32" fn LoadIconW(
     instance: t.HINSTANCE,
     icon_name: [*:0]const u16,

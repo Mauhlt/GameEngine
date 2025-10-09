@@ -64,19 +64,23 @@ pub fn init(
     return self;
 }
 
-pub fn chooseExtent(self: *const SwapchainSupportDetails, window: *const WindowHandle) vk.Extent2D {
+pub fn chooseExtent(
+    self: *const SwapchainSupportDetails,
+    window: *const WindowHandle,
+) vk.Extent2D {
     if (self.capabilities.current_extent.width != std.math.maxInt(u32)) {
         return self.capabilities.current_extent;
     }
-    const width: i32, const height: i32 = window.getFramebufferSize();
+    // depends on os
+    const size = window.clientSize();
     return vk.Extent2D{
         .width = std.math.clamp(
-            width,
+            @as(u32, @intCast(size.w)),
             self.capabilities.min_image_extent.width,
             self.capabilities.max_image_extent.width,
         ),
         .height = std.math.clamp(
-            height,
+            @as(u32, @intCast(size.h)),
             self.capabilities.min_image_extent.height,
             self.capabilities.max_image_extent.height,
         ),
@@ -95,14 +99,8 @@ pub fn choosePresentMode(self: *const SwapchainSupportDetails) vk.PresentModeKHR
 
 pub fn chooseFormat(self: *const SwapchainSupportDetails) vk.SurfaceFormatKHR {
     for (self.formats[0..self.n_formats]) |format| {
-        switch (format.format) {
-            .b8g8r8_srgb => {
-                switch (format.color_space) {
-                    .srgb_nonlinear => return format,
-                    else => {},
-                }
-            },
-            else => {},
+        if (format.format == .b8g8r8_srgb and format.color_space == .srgb_nonlinear) {
+            return format;
         }
     }
     return self.formats[0];

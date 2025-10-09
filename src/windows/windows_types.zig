@@ -183,12 +183,6 @@ pub const WPARAM = enum(usize) {
 // };
 // pub const HUMPD = [*c]struct_HUMPD__;
 // pub const LPCOLORREF = [*c]DWORD;
-// pub const struct_tagRECT = extern struct {
-//     left: LONG = @import("std").mem.zeroes(LONG),
-//     top: LONG = @import("std").mem.zeroes(LONG),
-//     right: LONG = @import("std").mem.zeroes(LONG),
-//     bottom: LONG = @import("std").mem.zeroes(LONG),
-// };
 // pub const RECT = struct_tagRECT;
 // pub const PRECT = [*c]struct_tagRECT;
 // pub const NPRECT = [*c]struct_tagRECT;

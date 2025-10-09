@@ -80,9 +80,20 @@ pub fn poll(self: *WindowHandle) void {
     }
 }
 
-pub fn size(self: *WindowHandle) struct { w: i32, h: i32 } {
-    var rect: win.Rect = undefined;
-    win.GetClientRect(self.hwnd, &rect);
+pub fn clientSize(self: *const WindowHandle) struct { w: i32, h: i32 } {
+    // drawable space
+    var rect: win.RECT = undefined;
+    _ = win.GetClientRect(self.hwnd, &rect);
+    return .{
+        .w = rect.right - rect.left,
+        .h = rect.bottom - rect.top,
+    };
+}
+
+pub fn windowSize(self: *const WindowHandle) struct { w: i32, h: i32 } {
+    // full window size
+    var rect: win.RECT = undefined;
+    _ = win.GetWindowRect(self.hwnd, &rect);
     return .{
         .w = rect.right - rect.left,
         .h = rect.bottom - rect.top,
