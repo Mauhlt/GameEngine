@@ -23,7 +23,7 @@ present_queue: vk.Queue = .null,
 // Swapchain
 swapchain: vk.SwapchainKHR = .null,
 format: vk.SurfaceFormatKHR,
-extent: vk.Extent2D,
+extent: vk.Extent2D = .{ .width = 0, .height = 0 },
 n_images: u32 = 0,
 images: [3]vk.Image = [_]vk.Image{.null} ** 3,
 image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
@@ -35,6 +35,10 @@ pipeline: vk.Pipeline = .null,
 // commands
 command_pool: vk.CommandPool = .null,
 command_buffer: vk.CommandBuffer = .null,
+// sync objects
+image_available_semaphore: vk.Semaphore = .null,
+render_finished_semaphore: vk.Semaphore = .null,
+in_flight_fence: vk.Fence = .null,
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -75,8 +79,10 @@ pub fn init(
     const extent = ssd.chooseExtent(&window);
     var image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3;
     try createImageViews(device, format.format, n_images, &images, &image_views);
-    // pipeline
     const render_pass = try createRenderPass(device, format.format);
+    var framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3;
+    try createFramebuffers(device, extent, &image_views, render_pass, &framebuffers);
+    // pipeline
     const pipeline_layout = try createGraphicsPipelineLayout(device);
     const pipeline = try createGraphicsPipeline(
         allo,
@@ -88,8 +94,13 @@ pub fn init(
     // commands
     const command_pool = try createCommandPool(surface, physical_device, device);
     const command_buffer = try createCommandBuffer(device, command_pool);
+    // sync objects
+    const image_available_semaphore = try createSemaphore(device);
+    const render_finished_semaphore = try createSemaphore(device);
+    const in_flight_fence = try createFence(device);
 
     window.show();
+
     return Engine{
         // base
         .window = window,
@@ -107,6 +118,7 @@ pub fn init(
         .n_images = n_images,
         .images = images,
         .image_views = image_views,
+        .framebuffers = framebuffers,
         // pipeline
         .render_pass = render_pass,
         .pipeline_layout = pipeline_layout,
@@ -114,12 +126,22 @@ pub fn init(
         // commands
         .command_pool = command_pool,
         .command_buffer = command_buffer,
+        // sync objects
+        .image_available_semaphore = image_available_semaphore,
+        .render_finished_semaphore = render_finished_semaphore,
+        .in_flight_fence = in_flight_fence,
     };
 }
 
 pub fn deinit(self: *Engine) void {
+    // sync objects
+    vk.destroySemaphore(self.device, self.image_available_semaphore, null);
+    vk.destroySemaphore(self.device, self.render_finished_semaphore, null);
+    vk.destroyFence(self.device, self.in_flight_fence, null);
+    // commands
     vk.destroyCommandPool(self.device, self.command_pool, null);
     for (self.framebuffers) |framebuffer| //
+        // swapchain
         vk.destroyFramebuffer(self.device, framebuffer, null);
     vk.destroyPipeline(self.device, self.pipeline, null);
     vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
@@ -127,13 +149,24 @@ pub fn deinit(self: *Engine) void {
     for (self.image_views) |image_view| //
         vk.destroyImageView(self.device, image_view, null);
     vk.destroySwapchainKHR(self.device, self.swapchain, null);
+    // base
     vk.destroyDevice(self.device, null);
     vk.destroySurfaceKHR(self.instance, self.surface, null);
     vk.destroyInstance(self.instance, null);
     self.window.deinit();
 }
 
-pub fn run() void {}
+pub fn run(self: *Engine) !void {
+    var i: usize = 0;
+    while (i < 1_000_000_000) : (i += 1) {
+        try self.drawFrame();
+    }
+
+    switch (vk.deviceWaitIdle(self.device)) {
+        .success => {},
+        else => return error.FailedToIdleDevice,
+    }
+}
 
 fn createInstance(app_name: [*:0]const u8, engine_name: [*:0]const u8) !vk.Instance {
     const app_info = vk.ApplicationInfo{
@@ -433,21 +466,21 @@ fn createFramebuffers(
     device: vk.Device,
     extent: vk.Extent2D,
     image_views: *[3]vk.ImageView,
-    framebuffers: *[3]vk.Framebuffer,
     render_pass: vk.RenderPass,
+    framebuffers: *[3]vk.Framebuffer,
 ) !void {
-    for (image_views, framebuffers) |image_view, framebuffer| {
+    for (image_views, framebuffers) |image_view, *framebuffer| {
         const attachments = [_]vk.ImageView{image_view};
 
         const create_info = vk.FramebufferCreateInfo{
             .render_pass = render_pass,
             .attachment_count = 1,
-            .p_attachments = attachments,
+            .p_attachments = &attachments,
             .width = extent.width,
             .height = extent.height,
         };
 
-        switch (vk.createFramebuffer(device, &create_info, null, &framebuffer)) {
+        switch (vk.createFramebuffer(device, &create_info, null, framebuffer)) {
             .success => {},
             else => return error.FailedToCreateFramebuffer,
         }
@@ -477,11 +510,22 @@ fn createRenderPass(device: vk.Device, format: vk.Format) !vk.RenderPass {
         .p_color_attachments = &color_attachment_ref,
     };
 
+    const dependency = vk.SubpassDependency{
+        .src_subpass = vk.SubpassExternal,
+        .dst_subpass = 0,
+        .src_stage_mask = .init(.color_attachment_output_bit),
+        .src_access_mask = .initEmpty(),
+        .dst_stage_mask = .init(.color_attachment_output_bit),
+        .dst_access_mask = .init(.color_attachment_write_bit),
+    };
+
     const create_info = vk.RenderPassCreateInfo{
         .attachment_count = 1,
         .p_attachments = &color_attachment,
         .subpass_count = 1,
         .p_subpasses = &subpass,
+        .dependency_count = 1,
+        .p_dependencies = &dependency,
     };
 
     var render_pass: vk.RenderPass = .null;
@@ -729,61 +773,147 @@ fn createCommandBuffer(
     };
 }
 
-fn recordCommandBuffer(
-    extent: vk.Extent2D,
-    render_pass: vk.RenderPass,
-    framebuffer: vk.Framebuffer,
-    pipeline: vk.Pipeline,
-    command_buffer: vk.CommandBuffer,
-) void {
-    const cb_begin_info = vk.CommandsBufferBeginInfo{
-        .p_inheritance_info = null,
-    };
-
-    switch (vk.beginCommandBuffer(command_buffer, &cb_begin_info)) {
+fn recordCommandBuffer(self: *const Engine, image_index: u32) !void {
+    // command buffer begin info
+    const cb_begin_info = vk.CommandBufferBeginInfo{};
+    switch (vk.beginCommandBuffer(self.command_buffer, &cb_begin_info)) {
         .success => {},
         else => return error.FailedToBeginCommandBuffer,
     }
-
-    const clear_color = vk.ClearColorValue{ .float32 = [4]f32{ 0, 0, 0, 0 } };
+    // render pass begin info
+    const clear_values = vk.ClearValue{ .color = .{ .float32 = [4]f32{ 0, 0, 0, 0 } } };
     const rp_begin_info = vk.RenderPassBeginInfo{
-        .render_pass = render_pass,
-        .framebuffer = framebuffer,
+        .render_pass = self.render_pass,
+        .framebuffer = self.framebuffers[image_index],
         .render_area = .{
             .offset = .{ .x = 0, .y = 0 },
-            .extent = extent,
+            .extent = self.extent,
         },
         .clear_value_count = 1,
-        .p_clear_values = &clear_color,
+        .p_clear_values = &clear_values,
     };
 
-    vk.cmdBeginRenderPass(command_buffer, &rp_begin_info, .@"inline");
-    vk.cmdBindPipeline(command_buffer, .graphics, pipeline);
+    vk.cmdBeginRenderPass(self.command_buffer, &rp_begin_info, .@"inline");
+    vk.cmdBindPipeline(self.command_buffer, .graphics, self.pipeline);
 
     const viewport = vk.Viewport{
         .x = 0,
         .y = 0,
-        .width = @floatFromInt(extent.width),
-        .height = @floatFromInt(extent.height),
+        .width = @floatFromInt(self.extent.width),
+        .height = @floatFromInt(self.extent.height),
         .min_depth = 0,
         .max_depth = 1,
     };
-    vk.cmdSetViewport(command_buffer, 0, 1, &viewport);
+    vk.cmdSetViewport(self.command_buffer, 0, 1, &viewport);
 
     const scissor = vk.Rect2D{
         .offset = .{ .x = 0, .y = 0 },
-        .extent = extent,
+        .extent = self.extent,
     };
-    vk.cmdSetScissor(command_buffer, 0, 1, &scissor);
+    vk.cmdSetScissor(self.command_buffer, 0, 1, &scissor);
 
-    vk.cmdDraw(command_buffer, 3, 1, 0, 0);
+    vk.cmdDraw(self.command_buffer, 3, 1, 0, 0);
 
-    vk.cmdEndRenderPass(command_buffer);
+    vk.cmdEndRenderPass(self.command_buffer);
 
-    switch (vk.endCommandBuffer(command_buffer)) {
+    switch (vk.endCommandBuffer(self.command_buffer)) {
         .success => {},
         else => return error.FailedToRecordCommandBuffer,
     }
 }
 
-fn drawFrame() void {}
+fn createSemaphore(device: vk.Device) !vk.Semaphore {
+    const create_info = vk.SemaphoreCreateInfo{};
+    var semaphore: vk.Semaphore = .null;
+    return switch (vk.createSemaphore(device, &create_info, null, &semaphore)) {
+        .success => semaphore,
+        else => error.FailedToCreateSemaphore,
+    };
+}
+
+fn createFence(device: vk.Device) !vk.Fence {
+    const create_info = vk.FenceCreateInfo{
+        .flags = .init(.signaled_bit),
+    };
+    var fence: vk.Fence = .null;
+    return switch (vk.createFence(device, &create_info, null, &fence)) {
+        .success => fence,
+        else => error.FailedToCreateFence,
+    };
+}
+
+fn drawFrame(self: *Engine) !void {
+    switch (vk.waitForFences(
+        self.device,
+        1,
+        &self.in_flight_fence,
+        .true,
+        std.math.maxInt(u64),
+    )) {
+        .success => {},
+        else => return error.FailedToWaitForFences,
+    }
+
+    switch (vk.resetFences(self.device, 1, &self.in_flight_fence)) {
+        .success => {},
+        else => return error.FailedToResetFences,
+    }
+
+    var image_index: u32 = 0;
+    switch (vk.acquireNextImageKHR(
+        self.device,
+        self.swapchain,
+        std.math.maxInt(u64),
+        self.image_available_semaphore,
+        .null,
+        &image_index,
+    )) {
+        .success => {},
+        else => return error.FailedToAcquireNextImage,
+    }
+
+    switch (vk.resetCommandBuffer(self.command_buffer, .initEmpty())) {
+        .success => {},
+        else => return error.FailedToResetCommandBuffer,
+    }
+
+    try self.recordCommandBuffer(image_index);
+
+    const wait_semaphores = [_]vk.Semaphore{self.image_available_semaphore};
+    const wait_stages = [_]vk.PipelineStageFlags{.init(.color_attachment_output_bit)};
+    const signal_semaphores = [_]vk.Semaphore{self.render_finished_semaphore};
+
+    const submit_info = vk.SubmitInfo{
+        .wait_semaphore_count = @truncate(wait_semaphores.len),
+        .p_wait_semaphores = &wait_semaphores,
+        .p_wait_dst_stage_mask = &wait_stages,
+        .command_buffer_count = 1,
+        .p_command_buffers = &self.command_buffer,
+        .signal_semaphore_count = @truncate(signal_semaphores.len),
+        .p_signal_semaphores = &signal_semaphores,
+    };
+
+    switch (vk.queueSubmit(
+        self.graphics_queue,
+        1,
+        &submit_info,
+        self.in_flight_fence,
+    )) {
+        .success => {},
+        else => return error.FailedToSubmitDrawCommandBuffer,
+    }
+
+    const swapchains = [_]vk.SwapchainKHR{self.swapchain};
+    const present_info = vk.PresentInfoKHR{
+        .wait_semaphore_count = 1,
+        .p_wait_semaphores = &signal_semaphores,
+        .swapchain_count = 1,
+        .p_swapchains = &swapchains,
+        .p_image_indices = &image_index,
+        .p_results = null,
+    };
+    switch (vk.queuePresentKHR(self.present_queue, &present_info)) {
+        .success => {},
+        else => return error.FailedToPresentQueue,
+    }
+}
