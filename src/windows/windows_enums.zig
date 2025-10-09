@@ -224,7 +224,7 @@ pub const SWP = enum(u32) {
     no_zorder = 0x0004,
     show_window = 0x0040,
 };
-
+// Queue Status
 pub const QS = enum(u32) {
     key = 0x0001,
     mouse_move = 0x0002,
@@ -239,18 +239,18 @@ pub const QS = enum(u32) {
     touch = 0x0800,
     pointer = 0x1000,
 };
-pub const QSS = std.Enum.EnumSet(QS);
+const QSS = std.EnumSet(QS);
 pub const mouse = QSS.initMany(&.{ .mouse_move, .mouse_button });
-pub const input = QSS.initMany(&.{ .mouse, .raw_input, .touch, .pointer });
+pub const input = QSS.initMany(&.{ .mouse_move, .mouse_button, .raw_input, .touch, .pointer });
 pub const all_events = QSS.initMany(&.{ .input, .post_message, .timer, .paint, .hotkey });
 pub const all_input = QSS.initMany(&.{ .input, .post_message, .timer, .paint, .hotkey, .send_message });
-
+// Peek Message
 pub const PM = enum(u32) {
     no_remove = 0,
     remove = 1,
     no_yield = 2,
-    qs_input = QSS.bits << @as(u32, 16),
-    qs_post_message = QSS.initMany(&.{ .past_message, .hotkey, .timer }).bits << @as(u32, 16),
+    qs_input = @as(u32, input.bits.mask) << 16,
+    qs_post_message = @as(u32, QSS.initMany(&.{ .post_message, .hotkey, .timer }).bits.mask) << 16,
     qs_paint = @intFromEnum(QS.paint) << @as(u32, 16),
     qs_send_message = @intFromEnum(QS.send_message) << @as(u32, 16),
 };

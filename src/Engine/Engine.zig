@@ -22,12 +22,11 @@ graphics_queue: vk.Queue = .null,
 present_queue: vk.Queue = .null,
 // Swapchain
 swapchain: vk.SwapchainKHR = .null,
-format: vk.SurfaceFormatKHR,
+format: vk.SurfaceFormatKHR = undefined,
 extent: vk.Extent2D = .{ .width = 0, .height = 0 },
-n_images: u32 = 0,
-images: [3]vk.Image = [_]vk.Image{.null} ** 3,
-image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
-framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
+images: []vk.Image = undefined,
+image_views: []vk.ImageView = undefined,
+framebuffers: []vk.Framebuffer = undefined,
 // pipeline
 render_pass: vk.RenderPass = .null,
 pipeline_layout: vk.PipelineLayout = .null,
@@ -48,107 +47,106 @@ pub fn init(
     width: u32,
     height: u32,
 ) !Engine {
+    var self: Engine = .{};
     // base
-    const window = try WindowHandle.init(
+    self.window = try WindowHandle.init(
         std.mem.span(app_name),
         std.mem.span(window_title),
         width,
         height,
     );
-    const instance = try createInstance(app_name, engine_name);
-    const surface = try createSurface(&window, instance);
-    const physical_device = try pickPhysicalDevice(instance, surface);
-    const device = try createLogicalDevice(surface, physical_device);
+    errdefer self.window.deinit();
+
+    self.instance = try createInstance(app_name, engine_name);
+    errdefer vk.destroyInstance(self.instance, null);
+
+    self.surface = try createSurface(&self.window, self.instance);
+    errdefer vk.destroySurfaceKHR(self.instance, self.surface, null);
+
+    self.physical_device = try pickPhysicalDevice(self.instance, self.surface);
+    self.device = try createLogicalDevice(self.surface, self.physical_device);
+    errdefer vk.destroyDevice(self.device, null);
+
     // queues
-    const indices = QFI.init(surface, physical_device) catch unreachable;
-    const graphics_queue = getDeviceQueue(device, indices.graphics_family);
-    const present_queue = getDeviceQueue(device, indices.present_family);
+    const indices = QFI.init(self.surface, self.physical_device) catch unreachable;
+    self.graphics_queue = getDeviceQueue(self.device, indices.graphics_family);
+    self.present_queue = getDeviceQueue(self.device, indices.present_family);
+
     // swapchain
-    const ssd = try SSD.init(surface, physical_device);
-    const swapchain = try createSwapchain(
-        &window,
-        surface,
-        physical_device,
-        device,
-        &ssd,
-    );
-    var n_images = try getNumImages(device, swapchain);
-    var images: [3]vk.Image = [_]vk.Image{.null} ** 3;
-    try getImages(device, swapchain, &n_images, &images);
-    const format = ssd.chooseFormat();
-    const extent = ssd.chooseExtent(&window);
-    var image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3;
-    try createImageViews(device, format.format, n_images, &images, &image_views);
-    const render_pass = try createRenderPass(device, format.format);
-    var framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3;
-    try createFramebuffers(device, extent, &image_views, render_pass, &framebuffers);
+    const ssd = try SSD.init(self.surface, self.physical_device);
+    self.swapchain = try createSwapchain(&self.window, self.surface, self.physical_device, self.device, &ssd);
+    errdefer vk.destroySwapchainKHR(self.device, self.swapchain, null);
+
+    self.images = try createImages(allo, self.device, self.swapchain);
+    errdefer allo.free(self.images);
+
+    self.format = ssd.chooseFormat();
+    self.extent = ssd.chooseExtent(&self.window);
+    self.image_views = try createImageViews(allo, self.device, self.format.format, self.images);
+    errdefer {
+        for (self.image_views) |*image_view| {
+            vk.destroyImageView(self.device, image_view.*, null);
+        }
+    }
+    errdefer allo.free(self.image_views);
+
+    self.render_pass = try createRenderPass(self.device, self.format.format);
+    errdefer vk.destroyRenderPass(self.device, self.render_pass, null);
+
+    self.framebuffers = try createFramebuffers(allo, self.device, self.extent, self.image_views, self.render_pass);
+    errdefer {
+        for (self.framebuffers) |*framebuffer| {
+            vk.destroyFramebuffer(self.device, framebuffer.*, null);
+        }
+    }
+    errdefer allo.free(self.framebuffers);
+
     // pipeline
-    const pipeline_layout = try createGraphicsPipelineLayout(device);
-    const pipeline = try createGraphicsPipeline(
-        allo,
-        device,
-        extent,
-        render_pass,
-        pipeline_layout,
-    );
+    self.pipeline_layout = try createGraphicsPipelineLayout(self.device);
+    errdefer vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+
+    self.pipeline = try createGraphicsPipeline(allo, self.device, self.extent, self.render_pass, self.pipeline_layout);
+    errdefer vk.destroyPipeline(self.device, self.pipeline, null);
+
     // commands
-    const command_pool = try createCommandPool(surface, physical_device, device);
-    const command_buffer = try createCommandBuffer(device, command_pool);
+    self.command_pool = try createCommandPool(self.surface, self.physical_device, self.device);
+    errdefer vk.destroyCommandPool(self.device, self.command_pool, null);
+    self.command_buffer = try createCommandBuffer(self.device, self.command_pool);
+
     // sync objects
-    const image_available_semaphore = try createSemaphore(device);
-    const render_finished_semaphore = try createSemaphore(device);
-    const in_flight_fence = try createFence(device);
+    self.image_available_semaphore = try createSemaphore(self.device);
+    self.render_finished_semaphore = try createSemaphore(self.device);
+    self.in_flight_fence = try createFence(self.device);
 
-    window.show();
+    // show window
+    self.window.show();
 
-    return Engine{
-        // base
-        .window = window,
-        .instance = instance,
-        .surface = surface,
-        .physical_device = physical_device,
-        .device = device,
-        // queues
-        .graphics_queue = graphics_queue,
-        .present_queue = present_queue,
-        // swapchain
-        .swapchain = swapchain,
-        .format = format,
-        .extent = extent,
-        .n_images = n_images,
-        .images = images,
-        .image_views = image_views,
-        .framebuffers = framebuffers,
-        // pipeline
-        .render_pass = render_pass,
-        .pipeline_layout = pipeline_layout,
-        .pipeline = pipeline,
-        // commands
-        .command_pool = command_pool,
-        .command_buffer = command_buffer,
-        // sync objects
-        .image_available_semaphore = image_available_semaphore,
-        .render_finished_semaphore = render_finished_semaphore,
-        .in_flight_fence = in_flight_fence,
-    };
+    return self;
 }
 
-pub fn deinit(self: *Engine) void {
+pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
     // sync objects
     vk.destroySemaphore(self.device, self.image_available_semaphore, null);
     vk.destroySemaphore(self.device, self.render_finished_semaphore, null);
     vk.destroyFence(self.device, self.in_flight_fence, null);
+
     // commands
     vk.destroyCommandPool(self.device, self.command_pool, null);
+
+    // swapchain
     for (self.framebuffers) |framebuffer| //
-        // swapchain
         vk.destroyFramebuffer(self.device, framebuffer, null);
+    allo.free(self.framebuffers);
+
     vk.destroyPipeline(self.device, self.pipeline, null);
     vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
     vk.destroyRenderPass(self.device, self.render_pass, null);
     for (self.image_views) |image_view| //
         vk.destroyImageView(self.device, image_view, null);
+    allo.free(self.image_views);
+    allo.free(self.images);
     vk.destroySwapchainKHR(self.device, self.swapchain, null);
+
     // base
     vk.destroyDevice(self.device, null);
     vk.destroySurfaceKHR(self.instance, self.surface, null);
@@ -405,34 +403,34 @@ fn createSwapchain(
     };
 }
 
-fn getNumImages(device: vk.Device, swapchain: vk.SwapchainKHR) !u32 {
+fn createImages(
+    allo: std.mem.Allocator,
+    device: vk.Device,
+    swapchain: vk.SwapchainKHR,
+) ![]vk.Image {
     var n_images: u32 = 0;
-    return switch (vk.getSwapchainImagesKHR(device, swapchain, &n_images, null)) {
-        .success => n_images,
+    switch (vk.getSwapchainImagesKHR(device, swapchain, &n_images, null)) {
+        .success => {},
+        else => return error.FailedToGetSwapchainImages,
+    }
+    if (n_images == 0) return error.FoundZeroImages;
+    std.debug.print("# of Images: {}\n", .{n_images});
+
+    const images: []vk.Image = try allo.alloc(vk.Image, n_images);
+    return switch (vk.getSwapchainImagesKHR(device, swapchain, &n_images, images.ptr)) {
+        .success => images,
         else => return error.FailedToGetSwapchainImages,
     };
 }
 
-fn getImages(
-    device: vk.Device,
-    swapchain: vk.SwapchainKHR,
-    n_images: *u32,
-    images: *[3]vk.Image,
-) !void {
-    switch (vk.getSwapchainImagesKHR(device, swapchain, n_images, images)) {
-        .success => {},
-        else => return error.FailedToGetSwapchainImages,
-    }
-}
-
 fn createImageViews(
+    allo: std.mem.Allocator,
     device: vk.Device,
     format: vk.Format,
-    n_images: u32,
-    images: *const [3]vk.Image,
-    image_views: *[3]vk.ImageView,
-) !void {
-    for (0..n_images) |i| {
+    images: []vk.Image,
+) ![]vk.ImageView {
+    const image_views = try allo.alloc(vk.ImageView, images.len);
+    for (0..images.len) |i| {
         const create_info = vk.ImageViewCreateInfo{
             .image = images[i],
             .view_type = .@"2d",
@@ -452,24 +450,24 @@ fn createImageViews(
             },
         };
 
-        var image_view: vk.ImageView = .null;
-        switch (vk.createImageView(device, &create_info, null, &image_view)) {
+        switch (vk.createImageView(device, &create_info, null, &image_views[i])) {
             .success => {},
             else => return error.FailedToCreateImageView,
         }
-        image_views[i] = image_view;
     }
+    return image_views;
 }
 
 fn createFramebuffers(
+    allo: std.mem.Allocator,
     device: vk.Device,
     extent: vk.Extent2D,
-    image_views: *[3]vk.ImageView,
+    image_views: []vk.ImageView,
     render_pass: vk.RenderPass,
-    framebuffers: *[3]vk.Framebuffer,
-) !void {
-    for (image_views, framebuffers) |image_view, *framebuffer| {
-        const attachments = [_]vk.ImageView{image_view};
+) ![]vk.Framebuffer {
+    const framebuffers: []vk.Framebuffer = try allo.alloc(vk.Framebuffer, image_views.len);
+    for (0..image_views.len) |i| {
+        const attachments = [_]vk.ImageView{image_views[i]};
 
         const create_info = vk.FramebufferCreateInfo{
             .render_pass = render_pass,
@@ -479,11 +477,12 @@ fn createFramebuffers(
             .height = extent.height,
         };
 
-        switch (vk.createFramebuffer(device, &create_info, null, framebuffer)) {
+        switch (vk.createFramebuffer(device, &create_info, null, &framebuffers[i])) {
             .success => {},
             else => return error.FailedToCreateFramebuffer,
         }
     }
+    return framebuffers;
 }
 
 fn createRenderPass(device: vk.Device, format: vk.Format) !vk.RenderPass {
@@ -543,12 +542,7 @@ fn createGraphicsPipelineLayout(device: vk.Device) !vk.PipelineLayout {
     };
 
     var pipeline_layout: vk.PipelineLayout = .null;
-    return switch (vk.createPipelineLayout(
-        device,
-        &create_info,
-        null,
-        &pipeline_layout,
-    )) {
+    return switch (vk.createPipelineLayout(device, &create_info, null, &pipeline_layout)) {
         .success => pipeline_layout,
         else => return error.FailedToCreatePipelineLayout,
     };
@@ -692,14 +686,7 @@ fn createGraphicsPipeline(
     };
 
     var pipeline: vk.Pipeline = .null;
-    return switch (vk.createGraphicsPipelines(
-        device,
-        .null,
-        1,
-        &create_info,
-        null,
-        &pipeline,
-    )) {
+    return switch (vk.createGraphicsPipelines(device, .null, 1, &create_info, null, &pipeline)) {
         .success => pipeline,
         else => return error.FailedToCreateGraphicsPipeline,
     };
@@ -842,13 +829,7 @@ fn createFence(device: vk.Device) !vk.Fence {
 }
 
 fn drawFrame(self: *Engine) !void {
-    switch (vk.waitForFences(
-        self.device,
-        1,
-        &self.in_flight_fence,
-        .true,
-        std.math.maxInt(u64),
-    )) {
+    switch (vk.waitForFences(self.device, 1, &self.in_flight_fence, .true, std.math.maxInt(u64))) {
         .success => {},
         else => return error.FailedToWaitForFences,
     }
@@ -859,14 +840,7 @@ fn drawFrame(self: *Engine) !void {
     }
 
     var image_index: u32 = 0;
-    switch (vk.acquireNextImageKHR(
-        self.device,
-        self.swapchain,
-        std.math.maxInt(u64),
-        self.image_available_semaphore,
-        .null,
-        &image_index,
-    )) {
+    switch (vk.acquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphore, .null, &image_index)) {
         .success => {},
         else => return error.FailedToAcquireNextImage,
     }
@@ -892,12 +866,7 @@ fn drawFrame(self: *Engine) !void {
         .p_signal_semaphores = &signal_semaphores,
     };
 
-    switch (vk.queueSubmit(
-        self.graphics_queue,
-        1,
-        &submit_info,
-        self.in_flight_fence,
-    )) {
+    switch (vk.queueSubmit(self.graphics_queue, 1, &submit_info, self.in_flight_fence)) {
         .success => {},
         else => return error.FailedToSubmitDrawCommandBuffer,
     }

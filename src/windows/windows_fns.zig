@@ -35,6 +35,8 @@ pub extern "user32" fn DefWindowProcW(
     lParam: t.LPARAM,
 ) callconv(.winapi) t.LRESULT;
 
+pub extern "user32" fn DestroyWindow(hwnd: t.HWND) callconv(.winapi) bool;
+
 pub extern "user32" fn DispatchMessageW(msg: *const s.MSG) callconv(.winapi) t.LRESULT;
 
 pub extern "user32" fn GetMessageW(
@@ -79,7 +81,7 @@ pub extern "user32" fn PeekMessageW(
     hwnd: t.HWND,
     msg_filter_min: u32,
     msg_filter_max: u32,
-    remove_msg: u32,
+    remove_msg: e.PM,
 ) callconv(.winapi) bool;
 
 pub extern "user32" fn RegisterClassW(

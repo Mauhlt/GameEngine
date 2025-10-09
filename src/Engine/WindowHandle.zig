@@ -21,8 +21,12 @@ pub fn init(
     // icons + cursors
     const icon = win.LoadIconW(.null, utf8ToUtf16("IDI_APPLICATION"));
     const cursor = win.LoadCursorW(.null, utf8ToUtf16("IDC_ARROW"));
+    const wnd_proc = WndProc;
     var wc: win.WNDCLASSEXW = .{
         .style = win.redraw.bits.mask,
+        .wnd_proc = wnd_proc,
+        .cls_extra = 0,
+        .wnd_extra = 0,
         .instance = instance,
         .icon = icon,
         .cursor = cursor,
@@ -53,8 +57,6 @@ pub fn init(
         .null => return error.FailedToCreateWindow,
         else => |value| value,
     };
-
-    const msg = PeekMessageW(&msg, hwnd, 0, 0, 0);
 
     return .{
         .instance = instance,
@@ -103,7 +105,31 @@ pub fn windowSize(self: *const WindowHandle) struct { w: i32, h: i32 } {
     };
 }
 
-pub fn shouldClose() bool {
-    var msg: win.MSG = undefined;
-    PeekMessage()
+fn WndProc(
+    hwnd: win.HWND,
+    msg: u32,
+    wParam: win.WPARAM,
+    lParam: win.LPARAM,
+) callconv(.winapi) win.LRESULT {
+    switch (@as(win.Messages, @enumFromInt(msg))) {
+        .close => {
+            _ = win.DestroyWindow(hwnd);
+            return .null;
+        },
+        .destroy => {
+            _ = win.PostQuitMessage(0);
+            return .null;
+        },
+        else => {
+            return win.DefWindowProcW(hwnd, msg, wParam, lParam);
+        }
+    }
+}
+
+pub fn shouldClose(self: *WindowHandle) bool {
+    _ = win.PeekMessageW(&self.msg, .null, 0, 0, .remove);
+    return switch (@as(win.Messages, @enumFromInt(self.msg.msg))) {
+        .quit => true,
+        else => false,
+    };
 }
