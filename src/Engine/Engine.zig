@@ -157,8 +157,7 @@ pub fn deinit(self: *Engine) void {
 }
 
 pub fn run(self: *Engine) !void {
-    var i: usize = 0;
-    while (i < 1_000_000_000) : (i += 1) {
+    while (!self.window.shouldClose()) {
         try self.drawFrame();
     }
 

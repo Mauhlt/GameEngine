@@ -6,6 +6,7 @@ const WindowHandle = @This();
 instance: win.HINSTANCE = .null,
 title: [*:0]const u16,
 hwnd: win.HWND = .null,
+msg: win.MSG = undefined,
 
 pub fn init(
     comptime name: []const u8,
@@ -53,6 +54,8 @@ pub fn init(
         else => |value| value,
     };
 
+    const msg = PeekMessageW(&msg, hwnd, 0, 0, 0);
+
     return .{
         .instance = instance,
         .title = window_title,
@@ -98,4 +101,9 @@ pub fn windowSize(self: *const WindowHandle) struct { w: i32, h: i32 } {
         .w = rect.right - rect.left,
         .h = rect.bottom - rect.top,
     };
+}
+
+pub fn shouldClose() bool {
+    var msg: win.MSG = undefined;
+    PeekMessage()
 }

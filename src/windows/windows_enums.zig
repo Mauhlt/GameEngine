@@ -108,6 +108,7 @@ pub const tiled_window: WindowStyles = .initMany(&.{
     .minimize_box,
     .maximize_box,
 });
+
 pub const SystemMetrics = enum(i32) {
     arrange = 56,
     clean_boot = 67,
@@ -205,6 +206,7 @@ pub const SystemMetrics = enum(i32) {
     x_virtual_screen = 76,
     y_virtual_screen = 77,
 };
+
 pub const SWP = enum(u32) {
     async_window_pos = 0x4000,
     defer_erase = 0x2000,
@@ -221,4 +223,34 @@ pub const SWP = enum(u32) {
     no_size = 0x0001,
     no_zorder = 0x0004,
     show_window = 0x0040,
+};
+
+pub const QS = enum(u32) {
+    key = 0x0001,
+    mouse_move = 0x0002,
+    mouse_button = 0x0004,
+    post_message = 0x0008,
+    timer = 0x0010,
+    paint = 0x0020,
+    send_message = 0x0040,
+    hotkey = 0x0080,
+    all_post_message = 0x0100,
+    raw_input = 0x0400,
+    touch = 0x0800,
+    pointer = 0x1000,
+};
+pub const QSS = std.Enum.EnumSet(QS);
+pub const mouse = QSS.initMany(&.{ .mouse_move, .mouse_button });
+pub const input = QSS.initMany(&.{ .mouse, .raw_input, .touch, .pointer });
+pub const all_events = QSS.initMany(&.{ .input, .post_message, .timer, .paint, .hotkey });
+pub const all_input = QSS.initMany(&.{ .input, .post_message, .timer, .paint, .hotkey, .send_message });
+
+pub const PM = enum(u32) {
+    no_remove = 0,
+    remove = 1,
+    no_yield = 2,
+    qs_input = QSS.bits << @as(u32, 16),
+    qs_post_message = QSS.initMany(&.{ .past_message, .hotkey, .timer }).bits << @as(u32, 16),
+    qs_paint = @intFromEnum(QS.paint) << @as(u32, 16),
+    qs_send_message = @intFromEnum(QS.send_message) << @as(u32, 16),
 };
