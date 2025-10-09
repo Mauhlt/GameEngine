@@ -10,6 +10,7 @@ const required_instance_extensions = [_][*:0]const u8{
 const required_device_extensions = [_][*:0]const u8{
     vk.ExtensionName.swapchain,
 };
+const maxu64 = std.math.maxInt(u64);
 const Engine = @This();
 // base
 window: WindowHandle = undefined,
@@ -69,8 +70,8 @@ pub fn init(
 
     // queues
     const indices = QFI.init(self.surface, self.physical_device) catch unreachable;
-    self.graphics_queue = getDeviceQueue(self.device, indices.graphics_family);
-    self.present_queue = getDeviceQueue(self.device, indices.present_family);
+    self.graphics_queue = getDeviceQueue(self.device, indices.graphics_family.?);
+    self.present_queue = getDeviceQueue(self.device, indices.present_family.?);
 
     // swapchain
     const ssd = try SSD.init(self.surface, self.physical_device);
@@ -87,8 +88,8 @@ pub fn init(
         for (self.image_views) |*image_view| {
             vk.destroyImageView(self.device, image_view.*, null);
         }
+        allo.free(self.image_views);
     }
-    errdefer allo.free(self.image_views);
 
     self.render_pass = try createRenderPass(self.device, self.format.format);
     errdefer vk.destroyRenderPass(self.device, self.render_pass, null);
@@ -98,8 +99,8 @@ pub fn init(
         for (self.framebuffers) |*framebuffer| {
             vk.destroyFramebuffer(self.device, framebuffer.*, null);
         }
+        allo.free(self.framebuffers);
     }
-    errdefer allo.free(self.framebuffers);
 
     // pipeline
     self.pipeline_layout = try createGraphicsPipelineLayout(self.device);
@@ -115,8 +116,13 @@ pub fn init(
 
     // sync objects
     self.image_available_semaphore = try createSemaphore(self.device);
+    errdefer vk.destroySemaphore(self.device, self.image_available_semaphore, null);
+
     self.render_finished_semaphore = try createSemaphore(self.device);
+    errdefer vk.destroySemaphore(self.device, self.render_finished_semaphore, null);
+
     self.in_flight_fence = try createFence(self.device);
+    errdefer vk.destroyFence(self.device, self.in_flight_fence, null);
 
     // show window
     self.window.show();
@@ -268,11 +274,10 @@ fn pickPhysicalDevice(
 }
 
 fn isDeviceSuitable(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) bool {
-    _ = QFI.init(surface, device) catch return false;
+    const indices = QFI.init(surface, device) catch return false;
     if (!areDeviceExtensionSupported(device)) return false;
     const ssd = SSD.init(surface, device) catch return false;
-    if (ssd.n_formats == 0 or ssd.n_present_modes == 0) return false;
-    return true;
+    return indices.isComplete() and (ssd.n_formats > 0 and ssd.n_present_modes > 0);
 }
 
 fn areDeviceExtensionSupported(device: vk.PhysicalDevice) bool {
@@ -297,15 +302,15 @@ fn createLogicalDevice(
     physical_device: vk.PhysicalDevice,
 ) !vk.Device {
     const indices = QFI.init(surface, physical_device) catch unreachable;
-    const queue_priority = [1]f32{1};
+    const queue_priority = [_]f32{1};
     const queue_create_infos = [_]vk.DeviceQueueCreateInfo{
         .{
-            .queue_family_index = indices.graphics_family,
+            .queue_family_index = indices.graphics_family.?,
             .p_queue_priorities = &queue_priority,
             .queue_count = 1,
         },
         .{
-            .queue_family_index = indices.present_family,
+            .queue_family_index = indices.present_family.?,
             .p_queue_priorities = &queue_priority,
             .queue_count = 1,
         },
@@ -319,7 +324,7 @@ fn createLogicalDevice(
 
     const create_info = vk.DeviceCreateInfo{
         .p_enabled_features = &feats,
-        .queue_create_info_count = if (indices.present_family != indices.graphics_family) //
+        .queue_create_info_count = if (indices.present_family.? != indices.graphics_family.?) //
             @truncate(queue_create_infos.len)
         else
             1,
@@ -376,8 +381,9 @@ fn createSwapchain(
         ssd.capabilities.min_image_count;
 
     const indices = try QFI.init(surface, physical_device);
-    const qfis = [_]u32{ indices.graphics_family, indices.present_family };
-    const is_same_family = indices.graphics_family == indices.present_family;
+    const qfis = [_]u32{ indices.graphics_family.?, indices.present_family.? };
+    const is_same_family = indices.graphics_family.? == indices.present_family.?;
+
     const create_info = vk.SwapchainCreateInfoKHR{
         .surface = surface,
         .min_image_count = n_images,
@@ -557,9 +563,11 @@ fn createGraphicsPipeline(
 ) !vk.Pipeline {
     const vert_code = try readFile(allo, "tri.vert.spv");
     defer allo.free(vert_code);
+    std.debug.print("Vert Code Size: {}\n", .{vert_code.len});
 
     const frag_code = try readFile(allo, "tri.frag.spv");
     defer allo.free(frag_code);
+    std.debug.print("Frag Code Size: {}\n", .{frag_code.len});
 
     const vert_sm = try createShaderModule(device, vert_code);
     defer vk.destroyShaderModule(device, vert_sm, null);
@@ -708,7 +716,7 @@ fn readFile(allo: std.mem.Allocator, filename: []const u8) ![]const u8 {
 fn createShaderModule(device: vk.Device, code: []const u8) !vk.ShaderModule {
     const create_info = vk.ShaderModuleCreateInfo{
         .code_size = @truncate(code.len),
-        .p_code = @ptrCast(@alignCast(code)),
+        .p_code = @ptrCast(@alignCast(code.ptr)),
     };
 
     var shader_module: vk.ShaderModule = .null;
@@ -732,7 +740,7 @@ fn createCommandPool(
 
     const create_info = vk.CommandPoolCreateInfo{
         .flags = .init(.reset_command_buffer_bit),
-        .queue_family_index = indices.graphics_family,
+        .queue_family_index = indices.graphics_family.?,
     };
 
     var command_pool: vk.CommandPool = .null;
@@ -759,7 +767,7 @@ fn createCommandBuffer(
     };
 }
 
-fn recordCommandBuffer(self: *const Engine, image_index: u32) !void {
+fn recordCommandBuffer(self: *Engine, image_index: u32) !void {
     // command buffer begin info
     const cb_begin_info = vk.CommandBufferBeginInfo{};
     switch (vk.beginCommandBuffer(self.command_buffer, &cb_begin_info)) {
@@ -801,7 +809,6 @@ fn recordCommandBuffer(self: *const Engine, image_index: u32) !void {
     vk.cmdDraw(self.command_buffer, 3, 1, 0, 0);
 
     vk.cmdEndRenderPass(self.command_buffer);
-
     switch (vk.endCommandBuffer(self.command_buffer)) {
         .success => {},
         else => return error.FailedToRecordCommandBuffer,
@@ -829,27 +836,33 @@ fn createFence(device: vk.Device) !vk.Fence {
 }
 
 fn drawFrame(self: *Engine) !void {
-    switch (vk.waitForFences(self.device, 1, &self.in_flight_fence, .true, std.math.maxInt(u64))) {
+    switch (vk.waitForFences(self.device, 1, &self.in_flight_fence, .true, maxu64)) {
         .success => {},
         else => return error.FailedToWaitForFences,
     }
-
     switch (vk.resetFences(self.device, 1, &self.in_flight_fence)) {
         .success => {},
         else => return error.FailedToResetFences,
     }
 
     var image_index: u32 = 0;
-    switch (vk.acquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphore, .null, &image_index)) {
+    switch (vk.acquireNextImageKHR(
+        self.device,
+        self.swapchain,
+        maxu64,
+        self.image_available_semaphore,
+        .null,
+        &image_index,
+    )) {
         .success => {},
         else => return error.FailedToAcquireNextImage,
     }
 
-    switch (vk.resetCommandBuffer(self.command_buffer, .initEmpty())) {
+    // .release_resources_bit
+    switch (vk.resetCommandBuffer(self.command_buffer, .init(.release_resources_bit))) {
         .success => {},
         else => return error.FailedToResetCommandBuffer,
     }
-
     try self.recordCommandBuffer(image_index);
 
     const wait_semaphores = [_]vk.Semaphore{self.image_available_semaphore};
