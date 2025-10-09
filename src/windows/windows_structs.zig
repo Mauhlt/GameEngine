@@ -41,3 +41,9 @@ pub const POINT = extern struct {
     x: i32,
     y: i32,
 };
+pub const RECT = extern struct {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+};

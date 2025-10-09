@@ -25,6 +25,7 @@ pub extern "user32" fn CreateWindowExW(
     instance: t.HINSTANCE,
     lpParam: t.LPVOID,
 ) callconv(.winapi) t.HWND;
+pub extern "user32" fn GetClientRect(hwnd: t.HWND, rect: t.RECT) callconv(.winapi) bool;
 pub extern "user32" fn DefWindowProcW(
     hwnd: t.HWND,
     msg: u32,

@@ -67,7 +67,7 @@ pub fn deinit(self: *WindowHandle) void {
     );
 }
 
-pub fn show(self: *WindowHandle) void {
+pub fn show(self: *const WindowHandle) void {
     _ = win.ShowWindow(self.hwnd, .show);
     _ = win.UpdateWindow(self.hwnd);
 }
@@ -78,4 +78,13 @@ pub fn poll(self: *WindowHandle) void {
         _ = win.TranslateMessage(&msg);
         _ = win.DispatchMessageW(&msg);
     }
+}
+
+pub fn size(self: *WindowHandle) struct { w: i32, h: i32 } {
+    var rect: win.Rect = undefined;
+    win.GetClientRect(self.hwnd, &rect);
+    return .{
+        .w = rect.right - rect.left,
+        .h = rect.bottom - rect.top,
+    };
 }

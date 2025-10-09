@@ -22,6 +22,7 @@ pub const HWND = @import("windows_types.zig").HWND;
 pub const LPCWSTR = @import("windows_types.zig").LPCWSTR;
 pub const LRESULT = @import("windows_types.zig").LRESULT;
 pub const LPARAM = @import("windows_types.zig").LPARAM;
+pub const RECT = @import("windows_types.zig").RECT;
 pub const SECURITY_ATTRIBUTES = @import("windows_types.zig").SECURITY_ATTRIBUTES;
 pub const WPARAM = @import("windows_types.zig").WPARAM;
 // Fns
@@ -33,6 +34,7 @@ pub const GetModuleHandleW = @import("windows_fns.zig").GetModuleHandleW;
 pub const GetSysColorBrush = @import("windows_fns.zig").GetSysColorBrush;
 pub const GetSystemMetrics = @import("windows_fns.zig").GetSystemMetrics;
 pub const GetWindowSize = @import("windows_fns.zig").GetWindowSize;
+pub const GetClientRect = @import("windows_fns.zig").GetClientRect;
 pub const RegisterClassW = @import("windows_fns.zig").RegisterClassW;
 pub const RegisterClassExW = @import("windows_fns.zig").RegisterClassExW;
 pub const LoadCursorW = @import("windows_fns.zig").LoadCursorW;

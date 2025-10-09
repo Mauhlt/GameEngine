@@ -1,132 +1,109 @@
 const std = @import("std");
-const assert = std.debug.assert;
 const vk = @import("..\\vulkan\\vulkan.zig");
+const WindowHandle = @import("WindowHandle.zig");
 const SwapchainSupportDetails = @This();
-// has version 2
-capabilities: vk.SurfaceCapabilitiesKHR = undefined,
-n_formats: u32 = 0,
-formats: [32]vk.SurfaceFormatKHR = undefined,
-n_present_modes: u32 = 0,
-present_modes: [32]vk.PresentModeKHR = undefined,
+
+capabilities: vk.SurfaceCapabilitiesKHR,
+n_formats: u32,
+formats: [32]vk.SurfaceFormatKHR,
+n_present_modes: u32,
+present_modes: [32]vk.PresentModeKHR,
 
 pub fn init(
-    physical_device: vk.PhysicalDevice,
     surface: vk.SurfaceKHR,
+    physical_device: vk.PhysicalDevice,
 ) !SwapchainSupportDetails {
-    // get capabilities
-    var capabilities = vk.SurfaceCapabilitiesKHR{};
+    var self: SwapchainSupportDetails = undefined;
     switch (vk.getPhysicalDeviceSurfaceCapabilitiesKHR(
         physical_device,
         surface,
-        &capabilities,
+        &self.capabilities,
     )) {
         .success => {},
-        else => return error.FailedToGetPhysicalDeviceSurfaceCapabilities,
+        else => return error.FailedTogetSurfaceCapabilities,
     }
-    // get formats
-    var n_formats: u32 = 0;
+
     switch (vk.getPhysicalDeviceSurfaceFormatsKHR(
         physical_device,
         surface,
-        &n_formats,
+        &self.n_formats,
         null,
     )) {
         .success => {},
-        else => return error.FailedToGetPhysicalDeviceSurfaceFormats,
+        else => return error.FailedToGetSurfaceFormats,
     }
-    assert(n_formats > 0);
-    var formats: [32]vk.SurfaceFormatKHR = undefined;
     switch (vk.getPhysicalDeviceSurfaceFormatsKHR(
         physical_device,
         surface,
-        &n_formats,
-        @ptrCast(&formats),
+        &self.n_formats,
+        &self.formats,
     )) {
         .success => {},
-        else => return error.FailedToGetPhysicalDeviceSurfaceFormats,
+        else => return error.FailedToGetSurfaceFormats,
     }
-    // get present modes
-    var n_present_modes: u32 = 0;
+
     switch (vk.getPhysicalDeviceSurfacePresentModesKHR(
         physical_device,
         surface,
-        &n_present_modes,
+        &self.n_present_modes,
         null,
     )) {
         .success => {},
-        else => return error.FailedToGetPhysicalDevicePresentModes,
+        else => return error.FailedToGetSurfacePresentModes,
     }
-    assert(n_present_modes > 0);
-    var present_modes: [32]vk.PresentModeKHR = undefined;
     switch (vk.getPhysicalDeviceSurfacePresentModesKHR(
         physical_device,
         surface,
-        &n_present_modes,
-        @ptrCast(&present_modes),
+        &self.n_present_modes,
+        &self.present_modes,
     )) {
         .success => {},
-        else => return error.FailedToGetPhysicalDevicePresentModes,
+        else => return error.FailedToGetSurfacePresentModes,
     }
-    // return filled out SSD
-    return .{
-        .capabilities = capabilities,
-        .n_formats = n_formats,
-        .formats = formats,
-        .n_present_modes = n_present_modes,
-        .present_modes = present_modes,
+
+    return self;
+}
+
+pub fn chooseExtent(self: *const SwapchainSupportDetails, window: *const WindowHandle) vk.Extent2D {
+    if (self.capabilities.current_extent.width != std.math.maxInt(u32)) {
+        return self.capabilities.current_extent;
+    }
+    const width: i32, const height: i32 = window.getFramebufferSize();
+    return vk.Extent2D{
+        .width = std.math.clamp(
+            width,
+            self.capabilities.min_image_extent.width,
+            self.capabilities.max_image_extent.width,
+        ),
+        .height = std.math.clamp(
+            height,
+            self.capabilities.min_image_extent.height,
+            self.capabilities.max_image_extent.height,
+        ),
     };
 }
 
-pub fn isAdequate(self: *const SwapchainSupportDetails) bool {
-    return self.n_formats > 0 and self.n_present_modes > 0;
-}
-
-pub fn chooseSurfaceFormat(
-    self: *const SwapchainSupportDetails,
-) vk.SurfaceFormatKHR {
-    for (self.formats) |format| {
-        if (format.format == .b8g8r8a8_srgb and format.color_space == .srgb_nonlinear) {
-            return format;
-        }
-    }
-    return self.formats[0];
-}
-
-pub fn choosePresentMode(
-    self: *const SwapchainSupportDetails,
-) vk.PresentModeKHR {
-    for (self.present_modes) |present_mode| {
-        if (present_mode == .mailbox) {
-            return present_mode;
+pub fn choosePresentMode(self: *const SwapchainSupportDetails) vk.PresentModeKHR {
+    for (self.present_modes[0..self.n_present_modes]) |present_mode| {
+        switch (present_mode) {
+            .mailbox => return present_mode,
+            else => {},
         }
     }
     return .fifo;
 }
 
-pub fn chooseExtent(
-    self: *const SwapchainSupportDetails,
-) vk.Extent2D {
-    if (self.capabilities.current_extent.width != std.math.maxInt(u32)) {
-        return self.capabilities.current_extent;
-    } else {
-        var width: i32, var height: i32 = .{ 0, 0 };
-        height = 640;
-        width = 480;
-        // get framebuffer size
-        var extent = vk.Extent2D{
-            .width = @intCast(width),
-            .height = @intCast(height),
-        };
-        extent.width = std.math.clamp(
-            extent.width,
-            self.capabilities.min_image_extent.width,
-            self.capabilities.max_image_extent.width,
-        );
-        extent.height = std.math.clamp(
-            extent.height,
-            self.capabilities.min_image_extent.height,
-            self.capabilities.max_image_extent.height,
-        );
-        return extent;
+pub fn chooseFormat(self: *const SwapchainSupportDetails) vk.SurfaceFormatKHR {
+    for (self.formats[0..self.n_formats]) |format| {
+        switch (format.format) {
+            .b8g8r8_srgb => {
+                switch (format.color_space) {
+                    .srgb_nonlinear => return format,
+                    else => {},
+                }
+            },
+            else => {},
+        }
     }
+    return self.formats[0];
 }

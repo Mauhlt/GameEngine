@@ -1,63 +1,57 @@
+const std = @import("std");
 const vk = @import("..\\vulkan\\vulkan.zig");
 const QueueFamilyIndices = @This();
 
-graphics_family: ?u32 = null,
-present_family: ?u32 = null,
+graphics_family: u32 = undefined,
+present_family: u32 = undefined,
 
-pub fn init(
-    surface: vk.SurfaceKHR,
-    physical_device: vk.PhysicalDevice,
-) !QueueFamilyIndices {
-    // get queues
-    // has version 2
-    var n_queues: u32 = undefined;
-    vk.getPhysicalDeviceQueueFamilyProperties(
-        physical_device,
-        &n_queues,
-        null,
-    );
-    var queues: [32]vk.QueueFamilyProperties = undefined;
-    vk.getPhysicalDeviceQueueFamilyProperties(
-        physical_device,
-        &n_queues,
-        &queues,
-    );
-    // get indices
-    var indices: QueueFamilyIndices = .{};
+pub fn init(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) !QueueFamilyIndices {
+    var n_families: u32 = 0;
+    vk.getPhysicalDeviceQueueFamilyProperties(device, &n_families, null);
+    if (n_families > 64) return error.TooManyQueueFamilies;
+    var families: [64]vk.QueueFamilyProperties = undefined;
+    vk.getPhysicalDeviceQueueFamilyProperties(device, &n_families, &families);
+
+    var self: QueueFamilyIndices = .{};
+    var graphics_support: vk.Bool32 = .false;
     var present_support: vk.Bool32 = .false;
-    for (queues[0..n_queues], 0..) |queue, i| {
-        // find graphics support
-        if (queue.queue_flags.contains(.graphics_bit)) {
-            indices.graphics_family = @truncate(i);
+    for (0..n_families) |i| {
+        graphics_support = .false;
+        present_support = .false;
+
+        const family = families[i];
+        if (family.queue_flags.contains(.graphics_bit)) {
+            graphics_support = .true;
+            self.graphics_family = @truncate(i);
         }
-        // find present support
+
         switch (vk.getPhysicalDeviceSurfaceSupportKHR(
-            physical_device,
+            device,
             @truncate(i),
             surface,
             &present_support,
         )) {
             .success => {},
-            else => return error.FailedToGetPhysicalDeviceSurfaceSupportKHR,
+            else => continue,
         }
         switch (present_support) {
-            .true => {
-                indices.present_family = @truncate(i);
-                present_support = .false;
-            },
+            .true => self.present_family = @truncate(i),
             else => {},
         }
-        // check if complete
-        if (indices.isComplete()) return indices;
+
+        if (present_support == .true and graphics_support == .true) return self;
     }
-
-    return error.FailedToCompleteIndices;
+    return error.FailedToFindQueuesSupportingGraphicsAndPresentation;
 }
 
-pub fn isComplete(self: *const QueueFamilyIndices) bool {
-    return self.graphics_family != null and self.present_family != null;
-}
+pub fn print(device: vk.PhysicalDevice) void {
+    var n_families: u32 = 0;
+    vk.getPhysicalDeviceQueueFamilyProperties(device, &n_families, null);
+    var families: [64]vk.QueueFamilyProperties = undefined;
+    vk.getPhysicalDeviceQueueFamilyProperties(device, &n_families, &families);
 
-pub fn isSameFamily(self: *const QueueFamilyIndices) bool {
-    return self.graphics_family.? == self.present_family.?;
+    for (families) |family| {
+        const count = family.queue_count;
+        std.debug.print("# Of Queues: {}\n", .{count});
+    }
 }

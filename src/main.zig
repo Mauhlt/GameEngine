@@ -7,7 +7,14 @@ pub fn main() !void {
     const allo = gpa.allocator();
     defer std.debug.assert(.ok == gpa.deinit());
     // engine
-    var engine = try Engine.init(allo);
+    var engine = try Engine.init(
+        allo,
+        "HokaAndHoshi",
+        "Hoka And Hoshi",
+        "EurekaEngine",
+        800,
+        600,
+    );
     defer engine.deinit();
     // try engine.run();
 }
