@@ -11,6 +11,7 @@ const required_device_extensions = [_][*:0]const u8{
     vk.ExtensionName.swapchain,
 };
 const maxu64 = std.math.maxInt(u64);
+const MAX_FRAMES_IN_FLIGHT: i32 = 2;
 const Engine = @This();
 // base
 window: WindowHandle = undefined,
@@ -25,20 +26,22 @@ present_queue: vk.Queue = .null,
 swapchain: vk.SwapchainKHR = .null,
 format: vk.SurfaceFormatKHR = undefined,
 extent: vk.Extent2D = .{ .width = 0, .height = 0 },
-images: []vk.Image = undefined,
-image_views: []vk.ImageView = undefined,
-framebuffers: []vk.Framebuffer = undefined,
+n_images: u32,
+images: *[3]vk.Image = [_]vk.Image{.null} ** 3,
+image_views: *[3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
+framebuffers: *[3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
 // pipeline
 render_pass: vk.RenderPass = .null,
 pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // commands
 command_pool: vk.CommandPool = .null,
-command_buffer: vk.CommandBuffer = .null,
+command_buffers: [2]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** 2,
 // sync objects
-image_available_semaphore: vk.Semaphore = .null,
-render_finished_semaphore: vk.Semaphore = .null,
-in_flight_fence: vk.Fence = .null,
+image_available_semaphores: [2]vk.Semaphore = [_]vk.Semaphore{.null} ** 2,
+render_finished_semaphores: [2]vk.Semaphore = [_]vk.Semaphore{.null} ** 2,
+in_flight_fences: [2]vk.Fence = [_]vk.Fence{.null} ** 2,
+// flags
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -48,86 +51,116 @@ pub fn init(
     width: u32,
     height: u32,
 ) !Engine {
-    var self: Engine = .{};
     // base
-    self.window = try WindowHandle.init(
-        std.mem.span(app_name),
-        std.mem.span(window_title),
-        width,
-        height,
-    );
-    errdefer self.window.deinit();
+    const window = try WindowHandle.init(std.mem.span(app_name), std.mem.span(window_title), width, height);
+    errdefer window.deinit();
 
-    self.instance = try createInstance(app_name, engine_name);
-    errdefer vk.destroyInstance(self.instance, null);
+    const instance = try createInstance(app_name, engine_name);
+    errdefer vk.destroyInstance(instance, null);
 
-    self.surface = try createSurface(&self.window, self.instance);
-    errdefer vk.destroySurfaceKHR(self.instance, self.surface, null);
+    const surface = try createSurface(&window, instance);
+    errdefer vk.destroySurfaceKHR(instance, surface, null);
 
-    self.physical_device = try pickPhysicalDevice(self.instance, self.surface);
-    self.device = try createLogicalDevice(self.surface, self.physical_device);
-    errdefer vk.destroyDevice(self.device, null);
+    const physical_device = try pickPhysicalDevice(instance, surface);
+    const device = try createLogicalDevice(surface, physical_device);
+    errdefer vk.destroyDevice(device, null);
 
     // queues
-    const indices = QFI.init(self.surface, self.physical_device) catch unreachable;
-    self.graphics_queue = getDeviceQueue(self.device, indices.graphics_family.?);
-    self.present_queue = getDeviceQueue(self.device, indices.present_family.?);
+    const indices = QFI.init(surface, physical_device) catch unreachable;
+    const graphics_queue = getDeviceQueue(device, indices.graphics_family.?);
+    const present_queue = getDeviceQueue(device, indices.present_family.?);
 
     // swapchain
-    const ssd = try SSD.init(self.surface, self.physical_device);
-    self.swapchain = try createSwapchain(&self.window, self.surface, self.physical_device, self.device, &ssd);
-    errdefer vk.destroySwapchainKHR(self.device, self.swapchain, null);
+    const ssd = try SSD.init(surface, physical_device);
+    const swapchain = try createSwapchain(&window, surface, physical_device, device, &ssd);
+    errdefer vk.destroySwapchainKHR(device, swapchain, null);
 
-    self.images = try createImages(allo, self.device, self.swapchain);
-    errdefer allo.free(self.images);
+    var n_images = try getNumImages(device, swapchain);
+    var images = [_]vk.Image{.null} ** 3;
+    try createImages(device, swapchain, &n_images, &images);
 
-    self.format = ssd.chooseFormat();
-    self.extent = ssd.chooseExtent(&self.window);
-    self.image_views = try createImageViews(allo, self.device, self.format.format, self.images);
-    errdefer {
-        for (self.image_views) |*image_view| {
-            vk.destroyImageView(self.device, image_view.*, null);
-        }
-        allo.free(self.image_views);
-    }
+    const format = ssd.chooseFormat();
+    const extent = ssd.chooseExtent(&window);
 
-    self.render_pass = try createRenderPass(self.device, self.format.format);
-    errdefer vk.destroyRenderPass(self.device, self.render_pass, null);
+    var image_views = [_]vk.ImageView{.null} ** 3;
+    try createImageViews(device, format.format, images, &image_views);
+    errdefer for (image_views[0..n_images]) |image_view| {
+        vk.destroyImageView(device, image_view, null);
+    };
 
-    self.framebuffers = try createFramebuffers(allo, self.device, self.extent, self.image_views, self.render_pass);
-    errdefer {
-        for (self.framebuffers) |*framebuffer| {
-            vk.destroyFramebuffer(self.device, framebuffer.*, null);
-        }
-        allo.free(self.framebuffers);
-    }
+    const render_pass = try createRenderPass(device, format.format);
+    errdefer vk.destroyRenderPass(device, render_pass, null);
+
+    var framebuffers = [_]vk.Framebuffer{.null} ** 3;
+    try createFramebuffers(device, extent, image_views, render_pass, &framebuffers);
+    errdefer for (framebuffers) |framebuffer| {
+        vk.destroyFramebuffer(device, framebuffer, null);
+    };
 
     // pipeline
-    self.pipeline_layout = try createGraphicsPipelineLayout(self.device);
-    errdefer vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+    const pipeline_layout = try createGraphicsPipelineLayout(device);
+    errdefer vk.destroyPipelineLayout(device, pipeline_layout, null);
 
-    self.pipeline = try createGraphicsPipeline(allo, self.device, self.extent, self.render_pass, self.pipeline_layout);
-    errdefer vk.destroyPipeline(self.device, self.pipeline, null);
+    const pipeline = try createGraphicsPipeline(device, extent, render_pass, pipeline_layout);
+    errdefer vk.destroyPipeline(device, pipeline, null);
 
     // commands
-    self.command_pool = try createCommandPool(self.surface, self.physical_device, self.device);
-    errdefer vk.destroyCommandPool(self.device, self.command_pool, null);
-    self.command_buffer = try createCommandBuffer(self.device, self.command_pool);
+    const command_pool = try createCommandPool(surface, physical_device, device);
+    errdefer vk.destroyCommandPool(device, command_pool, null);
+    var command_buffers = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT;
+    try createCommandBuffers(device, command_pool, &command_buffers);
 
     // sync objects
-    self.image_available_semaphore = try createSemaphore(self.device);
-    errdefer vk.destroySemaphore(self.device, self.image_available_semaphore, null);
+    var image_available_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
+    var render_finished_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
+    var in_flight_fences = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT;
 
-    self.render_finished_semaphore = try createSemaphore(self.device);
-    errdefer vk.destroySemaphore(self.device, self.render_finished_semaphore, null);
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        try createSemaphore(device, &image_available_semaphores[i]);
+        errdefer for (image_available_semaphores) |ias| //
+            vk.destroySemaphore(device, ias, null);
 
-    self.in_flight_fence = try createFence(self.device);
-    errdefer vk.destroyFence(self.device, self.in_flight_fence, null);
+        try createSemaphore(device, &render_finished_semaphores[i]);
+        errdefer for (render_finished_semaphores) |rfs| //
+            vk.destroySemaphore(device, rfs, null);
 
+        try createFence(device, &in_flight_fences[i]);
+        errdefer for (in_flight_fences) |iff| //
+            vk.destroyFence(device, iff, null);
+    }
     // show window
-    self.window.show();
+    window.show();
 
-    return self;
+    return .{
+        // base
+        .window = window,
+        .instance = instance,
+        .surface = surface,
+        .physical_device = physical_device,
+        .device = device,
+        // queues
+        .graphics_queue = graphics_queue,
+        .present_queue = present_queue,
+        // swapchain
+        .swapchain = swapchain,
+        .extent = extent,
+        .format = format,
+        .n_images = n_images,
+        .images = images,
+        .image_views = image_views,
+        .framebuffers = framebuffers,
+        // pipeline
+        .render_pass = render_pass,
+        .pipeline_layout = pipeline_layout,
+        .pipeline = pipeline,
+        // commands
+        .command_pool = command_pool,
+        .command_buffers = command_buffers,
+        // sync objects
+        .image_available_semaphores = image_available_semaphores,
+        .render_finished_semaphores = render_finished_semaphores,
+        .in_flight_fences = in_flight_fences,
+    };
 }
 
 pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
@@ -409,11 +442,7 @@ fn createSwapchain(
     };
 }
 
-fn createImages(
-    allo: std.mem.Allocator,
-    device: vk.Device,
-    swapchain: vk.SwapchainKHR,
-) ![]vk.Image {
+fn getNumImages(device: vk.Device, swapchain: vk.SwapchainKHR) !u32 {
     var n_images: u32 = 0;
     switch (vk.getSwapchainImagesKHR(device, swapchain, &n_images, null)) {
         .success => {},
@@ -421,9 +450,15 @@ fn createImages(
     }
     if (n_images == 0) return error.FoundZeroImages;
     std.debug.print("# of Images: {}\n", .{n_images});
+}
 
-    const images: []vk.Image = try allo.alloc(vk.Image, n_images);
-    return switch (vk.getSwapchainImagesKHR(device, swapchain, &n_images, images.ptr)) {
+fn createImages(
+    device: vk.Device,
+    swapchain: vk.SwapchainKHR,
+    n_images: *u32,
+    images: *[3]vk.Image,
+) !void {
+    return switch (vk.getSwapchainImagesKHR(device, swapchain, n_images, images)) {
         .success => images,
         else => return error.FailedToGetSwapchainImages,
     };
@@ -750,21 +785,21 @@ fn createCommandPool(
     };
 }
 
-fn createCommandBuffer(
+fn createCommandBuffers(
     device: vk.Device,
     command_pool: vk.CommandPool,
-) !vk.CommandBuffer {
+    command_buffers: *[MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer,
+) !void {
     const alloc_info = vk.CommandBufferAllocateInfo{
         .command_pool = command_pool,
         .level = .primary,
-        .command_buffer_count = 1,
+        .command_buffer_count = MAX_FRAMES_IN_FLIGHT,
     };
 
-    var command_buffer: vk.CommandBuffer = .null;
-    return switch (vk.allocateCommandBuffers(device, &alloc_info, &command_buffer)) {
-        .success => command_buffer,
-        else => error.FailedToCreateCommandBuffer,
-    };
+    switch (vk.allocateCommandBuffers(device, &alloc_info, &command_buffers)) {
+        .success => {},
+        else => return error.FailedToCreateCommandBuffer,
+    }
 }
 
 fn recordCommandBuffer(self: *Engine, image_index: u32) !void {
