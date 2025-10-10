@@ -15,6 +15,6 @@ pub fn main() !void {
         800,
         600,
     );
-    defer engine.deinit(allo);
+    defer engine.deinit();
     try engine.run();
 }

@@ -24,7 +24,10 @@ graphics_queue: vk.Queue = .null,
 present_queue: vk.Queue = .null,
 // Swapchain
 swapchain: vk.SwapchainKHR = .null,
-format: vk.SurfaceFormatKHR = undefined,
+format: vk.SurfaceFormatKHR = .{
+    .color_space = .srgb_nonlinear,
+    .format = .b8g8r8_srgb,
+},
 extent: vk.Extent2D = .{ .width = 0, .height = 0 },
 n_images: u32,
 images: [3]vk.Image = [_]vk.Image{.null} ** 3,
@@ -161,7 +164,12 @@ pub fn init(
     };
 }
 
-pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
+pub fn deinit(self: *Engine) void {
+    // swapchain
+    self.deinitSwapchain();
+    // pipeline
+    vk.destroyPipeline(self.device, self.pipeline, null);
+    vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
     // sync objects
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
@@ -170,15 +178,8 @@ pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
     }
     // commands
     vk.destroyCommandPool(self.device, self.command_pool, null);
-    // swapchain
-    for (self.framebuffers) |framebuffer| vk.destroyFramebuffer(self.device, framebuffer, null);
-    // pipeline
-    vk.destroyPipeline(self.device, self.pipeline, null);
-    vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+    // render pass
     vk.destroyRenderPass(self.device, self.render_pass, null);
-    // swapchain
-    for (self.image_views) |image_view| vk.destroyImageView(self.device, image_view, null);
-    vk.destroySwapchainKHR(self.device, self.swapchain, null);
     // base
     vk.destroyDevice(self.device, null);
     vk.destroySurfaceKHR(self.instance, self.surface, null);
@@ -188,6 +189,7 @@ pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
 
 pub fn run(self: *Engine) !void {
     while (!self.window.shouldClose()) {
+        // poll events here
         try self.drawFrame();
     }
 
@@ -199,20 +201,22 @@ pub fn run(self: *Engine) !void {
 
 fn createInstance(app_name: [*:0]const u8, engine_name: [*:0]const u8) !vk.Instance {
     const app_info = vk.ApplicationInfo{
-        .api_version = vk.makeApiVersion(0, 1, 0, 0),
-        .application_version = vk.makeApiVersion(0, 1, 0, 0),
         .p_application_name = app_name,
-        .engine_version = vk.makeApiVersion(0, 1, 0, 0),
+        .application_version = vk.makeApiVersion(0, 1, 0, 0),
         .p_engine_name = engine_name,
+        .engine_version = vk.makeApiVersion(0, 1, 0, 0),
+        .api_version = vk.makeApiVersion(0, 1, 1, 0),
     };
 
     var n_props: u32 = 0;
     var props: [64]vk.ExtensionProperties = undefined;
     try getInstanceExtensionProperties(&n_props, &props);
-    printExtensionProperties("Instance", props[0..n_props]);
+    switch (@import("builtin").mode) {
+        .Debug => printExtensionProperties("Instance", props[0..n_props]),
+        else => {},
+    }
 
     // switch based on os type
-
     const create_info = vk.InstanceCreateInfo{
         .p_application_info = &app_info,
         .flags = switch (@import("builtin").os.tag) {
@@ -268,7 +272,6 @@ fn createSurface(
         .hinstance = window.instance,
         .hwnd = window.hwnd,
     };
-
     var surface: vk.SurfaceKHR = .null;
     return switch (vk.createWin32SurfaceKHR(instance, &create_info, null, &surface)) {
         .success => surface,
@@ -286,12 +289,12 @@ fn pickPhysicalDevice(
         else => return error.FailedToEnumeratePhysicalDevices,
     }
     if (n_devices > 32) return error.TooManyPhysicalDevicesFound;
-
     var physical_devices: [32]vk.PhysicalDevice = [_]vk.PhysicalDevice{.null} ** 32;
     switch (vk.enumeratePhysicalDevices(instance, &n_devices, &physical_devices)) {
         .success => {},
         else => return error.FailedToEnumeratePhysicalDevices,
     }
+    printDevices(n_devices, &physical_devices);
 
     for (physical_devices[0..n_devices]) |physical_device| {
         if (isDeviceSuitable(surface, physical_device)) return physical_device;
@@ -299,14 +302,27 @@ fn pickPhysicalDevice(
     return error.FailedToFindPhysicalDevice;
 }
 
-fn isDeviceSuitable(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) bool {
-    const indices = QFI.init(surface, device) catch return false;
-    if (!areDeviceExtensionSupported(device)) return false;
-    const ssd = SSD.init(surface, device) catch return false;
-    return indices.isComplete() and (ssd.n_formats > 0 and ssd.n_present_modes > 0);
+fn printDevices(n_devices: u32, devices: *[32]vk.PhysicalDevice) void {
+    std.debug.print("List Of Physical Devices:\n", .{});
+    for (devices[0..n_devices]) |device| {
+        var props: vk.PhysicalDeviceProperties = undefined;
+        vk.getPhysicalDeviceProperties(device, &props);
+        const len = std.mem.indexOfScalar(u8, &props.device_name, 0).?;
+        const name = props.device_name[0..len];
+        std.debug.print("{s}: {s}\n", .{ name, @tagName(props.device_type) });
+    }
+    std.debug.print("\n", .{});
 }
 
-fn areDeviceExtensionSupported(device: vk.PhysicalDevice) bool {
+fn isDeviceSuitable(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) bool {
+    const indices = QFI.init(surface, device) catch return false;
+    if (!areDeviceExtensionsSupported(device)) return false;
+    const ssd = SSD.init(surface, device) catch return false;
+    const is_swapchain_adequate = ssd.n_formats > 0 and ssd.n_present_modes > 0;
+    return indices.isComplete() and is_swapchain_adequate;
+}
+
+fn areDeviceExtensionsSupported(device: vk.PhysicalDevice) bool {
     var n_props: u32 = 0;
     var props: [256]vk.ExtensionProperties = undefined;
     getDeviceExtensionProperties(device, &n_props, &props) catch return false;
@@ -874,7 +890,7 @@ fn drawFrame(self: *Engine) !void {
     switch (vk.waitForFences(
         self.device,
         1,
-        self.in_flight_fence[self.current_frame],
+        &self.in_flight_fences[self.current_frame],
         .true,
         MAX_U64,
     )) {
@@ -884,7 +900,7 @@ fn drawFrame(self: *Engine) !void {
     switch (vk.resetFences(
         self.device,
         1,
-        &self.in_flight_fence[self.current_frame],
+        &self.in_flight_fences[self.current_frame],
     )) {
         .success => {},
         else => return error.FailedToResetFences,
@@ -900,11 +916,18 @@ fn drawFrame(self: *Engine) !void {
         &image_index,
     )) {
         .success => {},
+        .error_out_of_date_khr => {
+            try self.recreateSwapchain();
+            return;
+        },
         else => return error.FailedToAcquireNextImage,
     }
 
     // .release_resources_bit
-    switch (vk.resetCommandBuffer(self.command_buffer, .init(.release_resources_bit))) {
+    switch (vk.resetCommandBuffer(
+        self.command_buffers[self.current_frame],
+        .init(.release_resources_bit),
+    )) {
         .success => {},
         else => return error.FailedToResetCommandBuffer,
     }
@@ -919,7 +942,7 @@ fn drawFrame(self: *Engine) !void {
         .p_wait_semaphores = &wait_semaphores,
         .p_wait_dst_stage_mask = &wait_stages,
         .command_buffer_count = 1,
-        .p_command_buffers = &self.command_buffer,
+        .p_command_buffers = &self.command_buffers[self.current_frame],
         .signal_semaphore_count = @truncate(signal_semaphores.len),
         .p_signal_semaphores = &signal_semaphores,
     };
@@ -945,6 +968,47 @@ fn drawFrame(self: *Engine) !void {
     };
     switch (vk.queuePresentKHR(self.present_queue, &present_info)) {
         .success => {},
+        .error_out_of_date_khr, .suboptimal_khr => {
+            try self.recreateSwapchain();
+        },
         else => return error.FailedToPresentQueue,
     }
+
+    self.current_frame = @mod(self.current_frame + 1, MAX_FRAMES_IN_FLIGHT);
+}
+
+fn recreateSwapchain(self: *Engine) !void {
+    vk.deviceWaitIdle(self.device);
+
+    const ssd = try SSD.init(self.surface, self.physical_device);
+    self.swapchain = createSwapchain(
+        self.window,
+        self.surface,
+        self.physical_device,
+        self.device,
+        &ssd,
+    );
+    try createImageViews(
+        self.device,
+        self.format,
+        self.n_images,
+        &self.images,
+        &self.views,
+    );
+    try createFramebuffers(
+        self.device,
+        self.extent,
+        self.n_images,
+        &self.views,
+        self.render_pass,
+        &self.framebuffers,
+    );
+}
+
+fn deinitSwapchain(self: *Engine) void {
+    for (self.framebuffers) |framebuffer| //
+        vk.destroyFramebuffer(self.device, framebuffer, null);
+    for (self.image_views) |image_view| //
+        vk.destroyImageView(self.device, image_view, null);
+    vk.destroySwapchainKHR(self.device, self.swapchain, null);
 }
