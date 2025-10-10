@@ -43,12 +43,13 @@ pub fn init(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) !QueueFamilyIndic
     return self;
 }
 
-pub fn print(device: vk.PhysicalDevice) void {
+pub fn print(device: vk.PhysicalDevice) !void {
     var n_families: u32 = 0;
     vk.getPhysicalDeviceQueueFamilyProperties(device, &n_families, null);
+    if (n_families == 0) return error.NoQueueFamiliesFound;
+    if (n_families > 64) return error.TooManyQueueFamiliesFound;
     var families: [64]vk.QueueFamilyProperties = undefined;
     vk.getPhysicalDeviceQueueFamilyProperties(device, &n_families, &families);
-
     for (families) |family| {
         const count = family.queue_count;
         std.debug.print("# Of Queues: {}\n", .{count});
