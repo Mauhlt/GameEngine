@@ -8,8 +8,8 @@ present_family: ?u32 = null,
 pub fn init(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) !QueueFamilyIndices {
     var n_families: u32 = 0;
     vk.getPhysicalDeviceQueueFamilyProperties(device, &n_families, null);
-    if (n_families == 0) return error.DidNotFindAnyQueueFamilies;
-    if (n_families > 64) return error.TooManyQueueFamilies;
+    if (n_families == 0) return error.NoQueueFamiliesFound;
+    if (n_families > 64) return error.TooManyQueueFamiliesFound;
 
     var families: [64]vk.QueueFamilyProperties = undefined;
     vk.getPhysicalDeviceQueueFamilyProperties(device, &n_families, &families);
@@ -22,10 +22,16 @@ pub fn init(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) !QueueFamilyIndic
         }
 
         var present_support: vk.Bool32 = .false;
-        switch (vk.getPhysicalDeviceSurfaceSupportKHR(device, @truncate(i), surface, &present_support)) {
+        switch (vk.getPhysicalDeviceSurfaceSupportKHR(
+            device,
+            @truncate(i),
+            surface,
+            &present_support,
+        )) {
             .success => {},
             else => continue,
         }
+
         switch (present_support) {
             .true => self.present_family = @truncate(i),
             else => {},

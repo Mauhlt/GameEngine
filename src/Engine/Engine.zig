@@ -46,6 +46,7 @@ render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore
 in_flight_fences: [MAX_FRAMES_IN_FLIGHT]vk.Fence = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT,
 // flags
 current_frame: u32 = 0,
+framebuffer_resized: bool = false,
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -58,77 +59,62 @@ pub fn init(
     // base
     var window = try WindowHandle.init(std.mem.span(app_name), std.mem.span(window_title), width, height);
     errdefer window.deinit();
-
     const instance = try createInstance(app_name, engine_name);
     errdefer vk.destroyInstance(instance, null);
-
     const surface = try createSurface(&window, instance);
     errdefer vk.destroySurfaceKHR(instance, surface, null);
-
     const physical_device = try pickPhysicalDevice(instance, surface);
     const device = try createLogicalDevice(surface, physical_device);
     errdefer vk.destroyDevice(device, null);
-
     // queues
     const indices = QFI.init(surface, physical_device) catch unreachable;
     const graphics_queue = getDeviceQueue(device, indices.graphics_family.?);
     const present_queue = getDeviceQueue(device, indices.present_family.?);
-
     // swapchain
     const ssd = try SSD.init(surface, physical_device);
     const swapchain = try createSwapchain(&window, surface, physical_device, device, &ssd);
     errdefer vk.destroySwapchainKHR(device, swapchain, null);
-
     var n_images = try getNumImages(device, swapchain);
     var images = [_]vk.Image{.null} ** 3;
     try createImages(device, swapchain, &n_images, &images);
-
     const format = ssd.chooseFormat();
     const extent = ssd.chooseExtent(&window);
-
     var image_views = [_]vk.ImageView{.null} ** 3;
     try createImageViews(device, format.format, n_images, &images, &image_views);
     errdefer for (image_views[0..n_images]) |image_view| {
         vk.destroyImageView(device, image_view, null);
     };
-
     const render_pass = try createRenderPass(device, format.format);
     errdefer vk.destroyRenderPass(device, render_pass, null);
-
     var framebuffers = [_]vk.Framebuffer{.null} ** 3;
     try createFramebuffers(device, extent, n_images, &image_views, render_pass, &framebuffers);
     errdefer for (framebuffers) |framebuffer| {
         vk.destroyFramebuffer(device, framebuffer, null);
     };
-
     // pipeline
     const pipeline_layout = try createGraphicsPipelineLayout(device);
     errdefer vk.destroyPipelineLayout(device, pipeline_layout, null);
-
     const pipeline = try createGraphicsPipeline(allo, device, extent, render_pass, pipeline_layout);
     errdefer vk.destroyPipeline(device, pipeline, null);
-
     // commands
     const command_pool = try createCommandPool(surface, physical_device, device);
     errdefer vk.destroyCommandPool(device, command_pool, null);
     var command_buffers = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT;
     try createCommandBuffers(device, command_pool, &command_buffers);
-
     // sync objects
     var image_available_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
     var render_finished_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
     var in_flight_fences = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT;
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        // semaphores
         image_available_semaphores[i] = try createSemaphore(device);
-        vk.destroySemaphore(device, image_available_semaphores[i], null);
-
+        errdefer vk.destroySemaphore(device, image_available_semaphores[i], null);
         render_finished_semaphores[i] = try createSemaphore(device);
-        vk.destroySemaphore(device, render_finished_semaphores[i], null);
-
+        errdefer vk.destroySemaphore(device, render_finished_semaphores[i], null);
+        // fences
         in_flight_fences[i] = try createFence(device);
-        vk.destroyFence(device, in_flight_fences[i], null);
+        errdefer vk.destroyFence(device, in_flight_fences[i], null);
     }
-
     // show window
     window.show();
 
@@ -897,16 +883,8 @@ fn drawFrame(self: *Engine) !void {
         .success => {},
         else => return error.FailedToWaitForFences,
     }
-    switch (vk.resetFences(
-        self.device,
-        1,
-        &self.in_flight_fences[self.current_frame],
-    )) {
-        .success => {},
-        else => return error.FailedToResetFences,
-    }
 
-    var image_index: u32 = 0;
+    var image_index: u32 = 0; // fixes deadlock
     switch (vk.acquireNextImageKHR(
         self.device,
         self.swapchain,
@@ -915,12 +893,21 @@ fn drawFrame(self: *Engine) !void {
         .null,
         &image_index,
     )) {
-        .success => {},
+        .success, .suboptimal_khr => {},
         .error_out_of_date_khr => {
             try self.recreateSwapchain();
             return;
         },
         else => return error.FailedToAcquireNextImage,
+    }
+
+    switch (vk.resetFences(
+        self.device,
+        1,
+        &self.in_flight_fences[self.current_frame],
+    )) {
+        .success => {},
+        else => return error.FailedToResetFences,
     }
 
     // .release_resources_bit
@@ -947,6 +934,8 @@ fn drawFrame(self: *Engine) !void {
         .p_signal_semaphores = &signal_semaphores,
     };
 
+    std.debug.print("{}\n", .{self.graphics_queue});
+    std.debug.print("{}\n", .{self.present_queue});
     switch (vk.queueSubmit(
         self.graphics_queue,
         1,
@@ -978,11 +967,20 @@ fn drawFrame(self: *Engine) !void {
 }
 
 fn recreateSwapchain(self: *Engine) !void {
-    vk.deviceWaitIdle(self.device);
+    var size = self.window.clientSize();
+    while (size.w == 0 or size.h == 0) {
+        size = self.window.clientSize();
+        std.Thread.sleep(1_000_000);
+    }
+
+    switch (vk.deviceWaitIdle(self.device)) {
+        .success => {},
+        else => return error.FailedToIdle,
+    }
 
     const ssd = try SSD.init(self.surface, self.physical_device);
-    self.swapchain = createSwapchain(
-        self.window,
+    self.swapchain = try createSwapchain(
+        &self.window,
         self.surface,
         self.physical_device,
         self.device,
@@ -990,16 +988,16 @@ fn recreateSwapchain(self: *Engine) !void {
     );
     try createImageViews(
         self.device,
-        self.format,
+        self.format.format,
         self.n_images,
         &self.images,
-        &self.views,
+        &self.image_views,
     );
     try createFramebuffers(
         self.device,
         self.extent,
         self.n_images,
-        &self.views,
+        &self.image_views,
         self.render_pass,
         &self.framebuffers,
     );
