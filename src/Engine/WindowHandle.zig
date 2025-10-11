@@ -74,7 +74,7 @@ pub fn deinit(self: *WindowHandle) void {
 
 pub fn show(self: *const WindowHandle) void {
     _ = win.ShowWindow(self.hwnd, .show);
-    _ = win.UpdateWindow(self.hwnd);
+    // _ = win.UpdateWindow(self.hwnd);
 }
 
 pub fn poll(self: *WindowHandle) void {

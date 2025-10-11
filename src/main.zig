@@ -16,5 +16,8 @@ pub fn main() !void {
         600,
     );
     defer engine.deinit();
-    try engine.run();
+
+    var i: usize = 0;
+    while (i < 10_000_000_000) : (i += 1) {}
+    // try engine.run();
 }

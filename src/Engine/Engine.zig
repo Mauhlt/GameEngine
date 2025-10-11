@@ -3,15 +3,18 @@ const WindowHandle = @import("WindowHandle.zig");
 const vk = @import("..\\vulkan\\vulkan.zig");
 const QFI = @import("QueueFamilyIndices.zig");
 const SSD = @import("SwapchainSupportDetails.zig");
-const required_instance_extensions = [_][*:0]const u8{
-    vk.ExtensionName.win32_surface,
-    vk.ExtensionName.surface,
-};
+const Vertex = @import("Vertex.zig");
+const required_instance_extensions = [_][*:0]const u8{ vk.ExtensionName.win32_surface, vk.ExtensionName.surface, vk.ExtensionName.nv_acquire_winrt_display, vk.ExtensionName.nv_dedicated_allocation };
 const required_device_extensions = [_][*:0]const u8{
     vk.ExtensionName.swapchain,
 };
 const MAX_U64 = std.math.maxInt(u64);
-const MAX_FRAMES_IN_FLIGHT: i32 = 2;
+const MAX_FRAMES_IN_FLIGHT: u32 = 2;
+const vertices = [3]Vertex{
+    .{ .pos = [2]f32{ 0, -0.5 }, .color = [3]f32{ 1, 1, 1 } },
+    .{ .pos = [2]f32{ 0.5, 0.5 }, .color = [3]f32{ 0, 1, 0 } },
+    .{ .pos = [2]f32{ -0.5, 0.5 }, .color = [3]f32{ 0, 0, 1 } },
+};
 const Engine = @This();
 // base
 window: WindowHandle = undefined,
@@ -39,6 +42,8 @@ pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // commands
 command_pool: vk.CommandPool = .null,
+vertex_buffer: vk.Buffer = .null,
+vertex_buffer_memory: vk.DeviceMemory = .null,
 command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
 // sync objects
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
@@ -79,15 +84,22 @@ pub fn init(
     try createImages(device, swapchain, &n_images, &images);
     const format = ssd.chooseFormat();
     const extent = ssd.chooseExtent(&window);
+
     var image_views = [_]vk.ImageView{.null} ** 3;
-    try createImageViews(device, format.format, n_images, &images, &image_views);
+    for (0..n_images) |i| {
+        image_views[i] = try createImageView(device, format.format, images[i]);
+    }
     errdefer for (image_views[0..n_images]) |image_view| {
         vk.destroyImageView(device, image_view, null);
     };
     const render_pass = try createRenderPass(device, format.format);
     errdefer vk.destroyRenderPass(device, render_pass, null);
+
     var framebuffers = [_]vk.Framebuffer{.null} ** 3;
-    try createFramebuffers(device, extent, n_images, &image_views, render_pass, &framebuffers);
+    for (0..n_images) |i| {
+        framebuffers[i] = try createFramebuffer(device, extent, image_views[i], render_pass);
+        errdefer for (0..i) |j| vk.destroyFramebuffer(device, framebuffers[j], null);
+    }
     errdefer for (framebuffers) |framebuffer| {
         vk.destroyFramebuffer(device, framebuffer, null);
     };
@@ -96,27 +108,39 @@ pub fn init(
     errdefer vk.destroyPipelineLayout(device, pipeline_layout, null);
     const pipeline = try createGraphicsPipeline(allo, device, extent, render_pass, pipeline_layout);
     errdefer vk.destroyPipeline(device, pipeline, null);
-    // commands
-    const command_pool = try createCommandPool(surface, physical_device, device);
-    errdefer vk.destroyCommandPool(device, command_pool, null);
-    var command_buffers = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT;
-    try createCommandBuffers(device, command_pool, &command_buffers);
-    // sync objects
-    var image_available_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
-    var render_finished_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
-    var in_flight_fences = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT;
-    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-        // semaphores
-        image_available_semaphores[i] = try createSemaphore(device);
-        errdefer vk.destroySemaphore(device, image_available_semaphores[i], null);
-        render_finished_semaphores[i] = try createSemaphore(device);
-        errdefer vk.destroySemaphore(device, render_finished_semaphores[i], null);
-        // fences
-        in_flight_fences[i] = try createFence(device);
-        errdefer vk.destroyFence(device, in_flight_fences[i], null);
-    }
-    // show window
-    window.show();
+    //// commands
+    // const command_pool = try createCommandPool(surface, physical_device, device);
+    // errdefer vk.destroyCommandPool(device, command_pool, null);
+    //
+    // var vertex_buffer: vk.Buffer = .null;
+    // var vertex_buffer_memory: vk.DeviceMemory = .null;
+    // try createBuffer(
+    //     Vertex,
+    //     physical_device,
+    //     device,
+    //     &vertices,
+    //     &vertex_buffer,
+    //     &vertex_buffer_memory,
+    // );
+    //
+    // var command_buffers = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT;
+    // try createCommandBuffers(device, command_pool, &command_buffers);
+    // // sync objects
+    // var image_available_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
+    // var render_finished_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
+    // var in_flight_fences = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT;
+    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+    //     // semaphores
+    //     image_available_semaphores[i] = try createSemaphore(device);
+    //     errdefer vk.destroySemaphore(device, image_available_semaphores[i], null);
+    //     render_finished_semaphores[i] = try createSemaphore(device);
+    //     errdefer vk.destroySemaphore(device, render_finished_semaphores[i], null);
+    //     // fences
+    //     in_flight_fences[i] = try createFence(device);
+    //     errdefer vk.destroyFence(device, in_flight_fences[i], null);
+    // }
+    // // show window
+    // window.show();
 
     return .{
         // base
@@ -140,19 +164,24 @@ pub fn init(
         .render_pass = render_pass,
         .pipeline_layout = pipeline_layout,
         .pipeline = pipeline,
-        // commands
-        .command_pool = command_pool,
-        .command_buffers = command_buffers,
-        // sync objects
-        .image_available_semaphores = image_available_semaphores,
-        .render_finished_semaphores = render_finished_semaphores,
-        .in_flight_fences = in_flight_fences,
+        // // commands
+        // .command_pool = command_pool,
+        // .vertex_buffer = vertex_buffer,
+        // .vertex_buffer_memory = vertex_buffer_memory,
+        // .command_buffers = command_buffers,
+        // // sync objects
+        // .image_available_semaphores = image_available_semaphores,
+        // .render_finished_semaphores = render_finished_semaphores,
+        // .in_flight_fences = in_flight_fences,
     };
 }
 
 pub fn deinit(self: *Engine) void {
     // swapchain
     self.deinitSwapchain();
+    // buffers
+    vk.destroyBuffer(self.device, self.vertex_buffer, null);
+    vk.freeMemory(self.device, self.vertex_buffer_memory, null);
     // pipeline
     vk.destroyPipeline(self.device, self.pipeline, null);
     vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
@@ -197,10 +226,7 @@ fn createInstance(app_name: [*:0]const u8, engine_name: [*:0]const u8) !vk.Insta
     var n_props: u32 = 0;
     var props: [64]vk.ExtensionProperties = undefined;
     try getInstanceExtensionProperties(&n_props, &props);
-    switch (@import("builtin").mode) {
-        .Debug => printExtensionProperties("Instance", props[0..n_props]),
-        else => {},
-    }
+    // printExtensionProperties("Instance", props[0..n_props]),
 
     // switch based on os type
     const create_info = vk.InstanceCreateInfo{
@@ -280,7 +306,7 @@ fn pickPhysicalDevice(
         .success => {},
         else => return error.FailedToEnumeratePhysicalDevices,
     }
-    printDevices(n_devices, &physical_devices);
+    // printDevices(n_devices, &physical_devices);
 
     for (physical_devices[0..n_devices]) |physical_device| {
         if (isDeviceSuitable(surface, physical_device)) return physical_device;
@@ -348,7 +374,7 @@ fn createLogicalDevice(
     var n_props: u32 = 0;
     var props: [256]vk.ExtensionProperties = undefined;
     try getDeviceExtensionProperties(physical_device, &n_props, &props);
-    printExtensionProperties("Device", props[0..n_props]);
+    // printExtensionProperties("Device", props[0..n_props]);
 
     const create_info = vk.DeviceCreateInfo{
         .p_enabled_features = &feats,
@@ -457,64 +483,57 @@ fn createImages(
     };
 }
 
-fn createImageViews(
+fn createImageView(
     device: vk.Device,
     format: vk.Format,
-    n_images: u32,
-    images: *[3]vk.Image,
-    views: *[3]vk.ImageView,
-) !void {
-    for (0..n_images) |i| {
-        const create_info = vk.ImageViewCreateInfo{
-            .image = images[i],
-            .view_type = .@"2d",
-            .format = format,
-            .components = .{
-                .r = .identity,
-                .g = .identity,
-                .b = .identity,
-                .a = .identity,
-            },
-            .subresource_range = .{
-                .aspect_mask = .init(.color_bit),
-                .base_mip_level = 0,
-                .level_count = 1,
-                .base_array_layer = 0,
-                .layer_count = 1,
-            },
-        };
+    image: vk.Image,
+) !vk.ImageView {
+    const create_info = vk.ImageViewCreateInfo{
+        .image = image,
+        .view_type = .@"2d",
+        .format = format,
+        .components = .{
+            .r = .identity,
+            .g = .identity,
+            .b = .identity,
+            .a = .identity,
+        },
+        .subresource_range = .{
+            .aspect_mask = .init(.color_bit),
+            .base_mip_level = 0,
+            .level_count = 1,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        },
+    };
 
-        switch (vk.createImageView(device, &create_info, null, &views[i])) {
-            .success => {},
-            else => return error.FailedToCreateImageView,
-        }
-    }
+    var view: vk.ImageView = .null;
+    return switch (vk.createImageView(device, &create_info, null, &view)) {
+        .success => view,
+        else => return error.FailedToCreateImageView,
+    };
 }
 
-fn createFramebuffers(
+fn createFramebuffer(
     device: vk.Device,
     extent: vk.Extent2D,
-    n_images: u32,
-    views: *[3]vk.ImageView,
+    view: vk.ImageView,
     render_pass: vk.RenderPass,
-    framebuffers: *[3]vk.Framebuffer,
-) !void {
-    for (0..n_images) |i| {
-        const attachments = [_]vk.ImageView{views[i]};
+) !vk.Framebuffer {
+    var attachments = [_]vk.ImageView{view};
+    const create_info = vk.FramebufferCreateInfo{
+        .render_pass = render_pass,
+        .attachment_count = 1,
+        .p_attachments = &attachments,
+        .width = extent.width,
+        .height = extent.height,
+    };
 
-        const create_info = vk.FramebufferCreateInfo{
-            .render_pass = render_pass,
-            .attachment_count = 1,
-            .p_attachments = &attachments,
-            .width = extent.width,
-            .height = extent.height,
-        };
-
-        switch (vk.createFramebuffer(device, &create_info, null, &framebuffers[i])) {
-            .success => {},
-            else => return error.FailedToCreateFramebuffer,
-        }
-    }
+    var framebuffer: vk.Framebuffer = .null;
+    return switch (vk.createFramebuffer(device, &create_info, null, &framebuffer)) {
+        .success => framebuffer,
+        else => error.FailedToCreateFramebuffer,
+    };
 }
 
 fn createRenderPass(device: vk.Device, format: vk.Format) !vk.RenderPass {
@@ -587,13 +606,13 @@ fn createGraphicsPipeline(
     render_pass: vk.RenderPass,
     pipeline_layout: vk.PipelineLayout,
 ) !vk.Pipeline {
-    const vert_code = try readFile(allo, "tri.vert.spv");
+    const vert_code = try readFile(allo, "vert.spv");
     defer allo.free(vert_code);
-    std.debug.print("Vert Code Size: {}\n", .{vert_code.len});
+    // std.debug.print("Vert Code Size: {}\n", .{vert_code.len});
 
-    const frag_code = try readFile(allo, "tri.frag.spv");
+    const frag_code = try readFile(allo, "frag.spv");
     defer allo.free(frag_code);
-    std.debug.print("Frag Code Size: {}\n", .{frag_code.len});
+    // std.debug.print("Frag Code Size: {}\n", .{frag_code.len});
 
     const vert_sm = try createShaderModule(device, vert_code);
     defer vk.destroyShaderModule(device, vert_sm, null);
@@ -727,16 +746,18 @@ fn createGraphicsPipeline(
 }
 
 fn readFile(allo: std.mem.Allocator, filename: []const u8) ![]const u8 {
-    // std.debug.print("Filename: {s}\n", .{@src().file});
-    const path = try std.fs.path.join(allo, &.{ "src", "Shaders", filename });
-    defer allo.free(path);
+    _ = filename;
+    var path_buffer: [1024]u8 = undefined;
+    const path = std.fs.cwd().realpath("Shaders", &path_buffer);
+    std.debug.print("Path: {s}\n", .{path});
+
     // std.debug.print("Path: {s}\n", .{path});
 
-    var file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
-    defer file.close();
-
-    const code = try file.readToEndAlloc(allo, 1024 * 1024);
-    return code;
+    // var file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
+    // defer file.close();
+    //
+    // const code = try file.readToEndAlloc(allo, 1024 * 1024);
+    // return code;
 }
 
 fn createShaderModule(device: vk.Device, code: []const u8) !vk.ShaderModule {
@@ -776,6 +797,73 @@ fn createCommandPool(
     };
 }
 
+fn createBuffer(
+    comptime T: type,
+    physical_device: vk.PhysicalDevice,
+    device: vk.Device,
+    data: []const T,
+    buffer: *vk.Buffer,
+    memory: *vk.DeviceMemory,
+) !void {
+    const create_info = vk.BufferCreateInfo{
+        .size = @sizeOf(T) * data.len,
+        .usage = .init(.vertex_buffer_bit),
+        .sharing_mode = .exclusive,
+    };
+
+    switch (vk.createBuffer(device, &create_info, null, buffer)) {
+        .success => {},
+        else => return error.FailedToCreateVertexBuffer,
+    }
+
+    var mem_reqs: vk.MemoryRequirements = .{};
+    vk.getBufferMemoryRequirements(device, buffer.*, &mem_reqs);
+    const alloc_info = vk.MemoryAllocateInfo{
+        .allocation_size = mem_reqs.size,
+        .memory_type_index = try findMemoryType(
+            physical_device,
+            mem_reqs.memory_type_bits,
+            .initMany(&.{ .host_visible_bit, .host_coherent_bit }),
+        ),
+    };
+
+    switch (vk.allocateMemory(device, &alloc_info, null, memory)) {
+        .success => {},
+        else => return error.FailedToAllocateVertexBufferMemory,
+    }
+
+    switch (vk.bindBufferMemory(device, buffer.*, memory.*, 0)) {
+        .success => {},
+        else => return error.FailedToBindBufferMemory,
+    }
+
+    var p_data: ?*anyopaque = null;
+    switch (vk.mapMemory(device, memory.*, 0, create_info.size, .initEmpty(), &p_data)) {
+        .success => {},
+        else => return error.FailedToMapMemory,
+    }
+    var gpu_vertices: [*]Vertex = @ptrCast(@alignCast(p_data));
+    @memcpy(gpu_vertices[0..data.len], data);
+    vk.unmapMemory(device, memory.*);
+}
+
+fn findMemoryType(
+    physical_device: vk.PhysicalDevice,
+    type_filter: u32,
+    props: vk.MemoryPropertyFlags,
+) !u32 {
+    var mem_props: vk.PhysicalDeviceMemoryProperties = .{};
+    vk.getPhysicalDeviceMemoryProperties(physical_device, &mem_props);
+
+    for (0..mem_props.memory_type_count) |i| {
+        const tf = @as(u32, 1) << @truncate(i);
+        if ((type_filter & tf) == 0) continue;
+        if (mem_props.memory_types[i].property_flags.eql(props)) {
+            return @truncate(i);
+        }
+    } else return error.FailedToFindSuitableMemoryType;
+}
+
 fn createCommandBuffers(
     device: vk.Device,
     command_pool: vk.CommandPool,
@@ -786,7 +874,6 @@ fn createCommandBuffers(
         .level = .primary,
         .command_buffer_count = MAX_FRAMES_IN_FLIGHT,
     };
-
     switch (vk.allocateCommandBuffers(device, &alloc_info, command_buffers)) {
         .success => {},
         else => return error.FailedToCreateCommandBuffer,
@@ -794,10 +881,11 @@ fn createCommandBuffers(
 }
 
 fn recordCommandBuffer(self: *Engine, image_index: u32) !void {
+    const command_buffer = self.command_buffers[self.current_frame];
     // command buffer begin info
     const cb_begin_info = vk.CommandBufferBeginInfo{};
     switch (vk.beginCommandBuffer(
-        self.command_buffers[self.current_frame],
+        command_buffer,
         &cb_begin_info,
     )) {
         .success => {},
@@ -816,37 +904,35 @@ fn recordCommandBuffer(self: *Engine, image_index: u32) !void {
         .p_clear_values = &clear_values,
     };
 
-    vk.cmdBeginRenderPass(
-        self.command_buffers[self.current_frame],
-        &rp_begin_info,
-        .@"inline",
-    );
-    vk.cmdBindPipeline(
-        self.command_buffers[self.current_frame],
-        .graphics,
-        self.pipeline,
-    );
+    vk.cmdBeginRenderPass(command_buffer, &rp_begin_info, .@"inline");
+    {
+        vk.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
 
-    const viewport = vk.Viewport{
-        .x = 0,
-        .y = 0,
-        .width = @floatFromInt(self.extent.width),
-        .height = @floatFromInt(self.extent.height),
-        .min_depth = 0,
-        .max_depth = 1,
-    };
-    vk.cmdSetViewport(self.command_buffers[self.current_frame], 0, 1, &viewport);
+        const viewport = vk.Viewport{
+            .x = 0,
+            .y = 0,
+            .width = @floatFromInt(self.extent.width),
+            .height = @floatFromInt(self.extent.height),
+            .min_depth = 0,
+            .max_depth = 1,
+        };
+        vk.cmdSetViewport(command_buffer, 0, 1, &viewport);
 
-    const scissor = vk.Rect2D{
-        .offset = .{ .x = 0, .y = 0 },
-        .extent = self.extent,
-    };
-    vk.cmdSetScissor(self.command_buffers[self.current_frame], 0, 1, &scissor);
+        const scissor = vk.Rect2D{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = self.extent,
+        };
+        vk.cmdSetScissor(command_buffer, 0, 1, &scissor);
 
-    vk.cmdDraw(self.command_buffers[self.current_frame], 3, 1, 0, 0);
+        const vertex_buffers = [_]vk.Buffer{self.vertex_buffer};
+        const offsets = [_]vk.DeviceSize{0};
+        vk.cmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, &offsets);
 
-    vk.cmdEndRenderPass(self.command_buffers[self.current_frame]);
-    switch (vk.endCommandBuffer(self.command_buffers[self.current_frame])) {
+        vk.cmdDraw(command_buffer, @as(u32, @truncate(vertices.len)), 1, 0, 0);
+    }
+    vk.cmdEndRenderPass(command_buffer);
+
+    switch (vk.endCommandBuffer(command_buffer)) {
         .success => {},
         else => return error.FailedToRecordCommandBuffer,
     }
@@ -873,16 +959,13 @@ fn createFence(device: vk.Device) !vk.Fence {
 }
 
 fn drawFrame(self: *Engine) !void {
-    switch (vk.waitForFences(
+    _ = vk.waitForFences(
         self.device,
         1,
         &self.in_flight_fences[self.current_frame],
         .true,
         MAX_U64,
-    )) {
-        .success => {},
-        else => return error.FailedToWaitForFences,
-    }
+    );
 
     var image_index: u32 = 0; // fixes deadlock
     switch (vk.acquireNextImageKHR(
@@ -898,26 +981,21 @@ fn drawFrame(self: *Engine) !void {
             try self.recreateSwapchain();
             return;
         },
-        else => return error.FailedToAcquireNextImage,
+        else => return error.FailedToAcquireSwapchainImage,
     }
+    std.debug.print("Image Index: {}\n", .{image_index});
 
-    switch (vk.resetFences(
+    _ = vk.resetFences(
         self.device,
         1,
         &self.in_flight_fences[self.current_frame],
-    )) {
-        .success => {},
-        else => return error.FailedToResetFences,
-    }
+    );
 
     // .release_resources_bit
-    switch (vk.resetCommandBuffer(
+    _ = vk.resetCommandBuffer(
         self.command_buffers[self.current_frame],
         .init(.release_resources_bit),
-    )) {
-        .success => {},
-        else => return error.FailedToResetCommandBuffer,
-    }
+    );
     try self.recordCommandBuffer(image_index);
 
     const wait_semaphores = [_]vk.Semaphore{self.image_available_semaphores[self.current_frame]};
@@ -934,8 +1012,6 @@ fn drawFrame(self: *Engine) !void {
         .p_signal_semaphores = &signal_semaphores,
     };
 
-    std.debug.print("{}\n", .{self.graphics_queue});
-    std.debug.print("{}\n", .{self.present_queue});
     switch (vk.queueSubmit(
         self.graphics_queue,
         1,
@@ -955,6 +1031,7 @@ fn drawFrame(self: *Engine) !void {
         .p_image_indices = &image_index,
         .p_results = null,
     };
+
     switch (vk.queuePresentKHR(self.present_queue, &present_info)) {
         .success => {},
         .error_out_of_date_khr, .suboptimal_khr => {
@@ -970,7 +1047,7 @@ fn recreateSwapchain(self: *Engine) !void {
     var size = self.window.clientSize();
     while (size.w == 0 or size.h == 0) {
         size = self.window.clientSize();
-        std.Thread.sleep(1_000_000);
+        std.Thread.sleep(1_000_000); // sleep for 1ms
     }
 
     switch (vk.deviceWaitIdle(self.device)) {
@@ -986,21 +1063,10 @@ fn recreateSwapchain(self: *Engine) !void {
         self.device,
         &ssd,
     );
-    try createImageViews(
-        self.device,
-        self.format.format,
-        self.n_images,
-        &self.images,
-        &self.image_views,
-    );
-    try createFramebuffers(
-        self.device,
-        self.extent,
-        self.n_images,
-        &self.image_views,
-        self.render_pass,
-        &self.framebuffers,
-    );
+    for (0..self.n_images) |i| {
+        self.image_views[i] = try createImageView(self.device, self.format.format, self.images[i]);
+        self.framebuffers[i] = try createFramebuffer(self.device, self.extent, self.image_views[i], self.render_pass);
+    }
 }
 
 fn deinitSwapchain(self: *Engine) void {
