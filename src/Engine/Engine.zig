@@ -18,6 +18,7 @@ const vertices = [3]Vertex{
     .{ .pos = [2]f32{ 0.5, 0.5 }, .color = [3]f32{ 0, 1, 0 } },
     .{ .pos = [2]f32{ -0.5, 0.5 }, .color = [3]f32{ 0, 0, 1 } },
 };
+const indices = [6]u16{ 0, 1, 2, 2, 3, 0 };
 const Engine = @This();
 // base
 window: WindowHandle = undefined,
@@ -45,9 +46,12 @@ pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // commands
 command_pool: vk.CommandPool = .null,
+command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
+// buffers
 vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
-command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
+index_buffer: vk.Buffer = .null,
+index_buffer_memory: vk.DeviceMemory = .null,
 // sync objects
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
@@ -79,9 +83,9 @@ pub fn init(
     const device = try createLogicalDevice(surface, physical_device);
     errdefer vk.destroyDevice(device, null);
     // queues
-    const indices = QFI.init(surface, physical_device) catch unreachable;
-    const graphics_queue = getDeviceQueue(device, indices.graphics_family.?);
-    const present_queue = getDeviceQueue(device, indices.present_family.?);
+    const qfi = QFI.init(surface, physical_device) catch unreachable;
+    const graphics_queue = getDeviceQueue(device, qfi.graphics_family.?);
+    const present_queue = getDeviceQueue(device, qfi.present_family.?);
     // swapchain
     const ssd = try SSD.init(surface, physical_device);
     const swapchain = try createSwapchain(&window, surface, physical_device, device, &ssd);
@@ -107,16 +111,35 @@ pub fn init(
     // commands
     const command_pool = try createCommandPool(surface, physical_device, device);
     errdefer vk.destroyCommandPool(device, command_pool, null);
+    // stage -> vertex -> stage -> index
     var vertex_buffer: vk.Buffer = .null;
     var vertex_buffer_memory: vk.DeviceMemory = .null;
-    try createBuffer(
+    try createBufferAndMemory(
         Vertex,
         physical_device,
         device,
-        &vertices,
+        graphics_queue,
+        command_pool,
         &vertex_buffer,
         &vertex_buffer_memory,
+        .vertex_buffer_bit,
+        &vertices,
     );
+
+    var index_buffer: vk.Buffer = .null;
+    var index_buffer_memory: vk.DeviceMemory = .null;
+    try createBufferAndMemory(
+        u16,
+        physical_device,
+        device,
+        graphics_queue,
+        command_pool,
+        &index_buffer,
+        &index_buffer_memory,
+        .index_buffer_bit,
+        &indices,
+    );
+
     var command_buffers = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT;
     try createCommandBuffers(device, command_pool, &command_buffers);
     // sync objects
@@ -161,6 +184,8 @@ pub fn init(
         .command_pool = command_pool,
         .vertex_buffer = vertex_buffer,
         .vertex_buffer_memory = vertex_buffer_memory,
+        .index_buffer = index_buffer,
+        .index_buffer_memory = index_buffer_memory,
         .command_buffers = command_buffers,
         // sync objects
         .image_available_semaphores = image_available_semaphores,
@@ -173,6 +198,8 @@ pub fn deinit(self: *Engine) void {
     // swapchain
     self.deinitSwapchain();
     // buffers
+    vk.destroyBuffer(self.device, self.index_buffer, null);
+    vk.freeMemory(self.device, self.index_buffer_memory, null);
     vk.destroyBuffer(self.device, self.vertex_buffer, null);
     vk.freeMemory(self.device, self.vertex_buffer_memory, null);
     // pipeline
@@ -321,11 +348,11 @@ fn printDevices(n_devices: u32, devices: *[32]vk.PhysicalDevice) void {
 }
 
 fn isDeviceSuitable(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) bool {
-    const indices = QFI.init(surface, device) catch return false;
+    const qfi = QFI.init(surface, device) catch return false;
     if (!areDeviceExtensionsSupported(device)) return false;
     const ssd = SSD.init(surface, device) catch return false;
     const is_swapchain_adequate = ssd.n_formats > 0 and ssd.n_present_modes > 0;
-    return indices.isComplete() and is_swapchain_adequate;
+    return qfi.isComplete() and is_swapchain_adequate;
 }
 
 fn areDeviceExtensionsSupported(device: vk.PhysicalDevice) bool {
@@ -346,16 +373,16 @@ fn createLogicalDevice(
     surface: vk.SurfaceKHR,
     physical_device: vk.PhysicalDevice,
 ) !vk.Device {
-    const indices = QFI.init(surface, physical_device) catch unreachable;
+    const qfi = QFI.init(surface, physical_device) catch unreachable;
     const queue_priority = [_]f32{1};
     const queue_create_infos = [_]vk.DeviceQueueCreateInfo{
         .{
-            .queue_family_index = indices.graphics_family.?,
+            .queue_family_index = qfi.graphics_family.?,
             .p_queue_priorities = &queue_priority,
             .queue_count = 1,
         },
         .{
-            .queue_family_index = indices.present_family.?,
+            .queue_family_index = qfi.present_family.?,
             .p_queue_priorities = &queue_priority,
             .queue_count = 1,
         },
@@ -369,7 +396,7 @@ fn createLogicalDevice(
 
     const create_info = vk.DeviceCreateInfo{
         .p_enabled_features = &feats,
-        .queue_create_info_count = if (indices.present_family.? != indices.graphics_family.?) //
+        .queue_create_info_count = if (qfi.present_family.? != qfi.graphics_family.?) //
             @truncate(queue_create_infos.len)
         else
             1,
@@ -424,9 +451,9 @@ fn createSwapchain(
     else
         ssd.capabilities.min_image_count + 1;
 
-    const indices = try QFI.init(surface, physical_device);
-    const qfis = [_]u32{ indices.graphics_family.?, indices.present_family.? };
-    const is_same_family = indices.graphics_family.? == indices.present_family.?;
+    const qfi = try QFI.init(surface, physical_device);
+    const qfis = [_]u32{ qfi.graphics_family.?, qfi.present_family.? };
+    const is_same_family = qfi.graphics_family.? == qfi.present_family.?;
 
     const create_info = vk.SwapchainCreateInfoKHR{
         .surface = surface,
@@ -758,11 +785,11 @@ fn createCommandPool(
     physical_device: vk.PhysicalDevice,
     device: vk.Device,
 ) !vk.CommandPool {
-    const indices = QFI.init(surface, physical_device) catch unreachable;
+    const qfi = QFI.init(surface, physical_device) catch unreachable;
 
     const create_info = vk.CommandPoolCreateInfo{
         .flags = .init(.reset_command_buffer_bit),
-        .queue_family_index = indices.graphics_family.?,
+        .queue_family_index = qfi.graphics_family.?,
     };
 
     var command_pool: vk.CommandPool = .null;
@@ -772,54 +799,161 @@ fn createCommandPool(
     };
 }
 
-fn createBuffer(
+fn createBufferAndMemory(
     comptime T: type,
     physical_device: vk.PhysicalDevice,
     device: vk.Device,
-    data: []const T,
+    graphics_queue: vk.Queue,
+    command_pool: vk.CommandPool,
     buffer: *vk.Buffer,
-    memory: *vk.DeviceMemory,
+    buffer_memory: *vk.DeviceMemory,
+    bit_type: vk.BufferUsageFlagBits,
+    data: []const T,
 ) !void {
+    const buffer_size = @sizeOf(T) * data.len;
+    const staging_buffer = try createBuffer(
+        device,
+        buffer_size,
+        .init(.transfer_src_bit),
+    );
+    defer vk.destroyBuffer(device, staging_buffer, null);
+
+    const staging_buffer_memory = try createBufferMemory(
+        physical_device,
+        device,
+        staging_buffer,
+        .initMany(&.{ .host_visible_bit, .host_coherent_bit }),
+    );
+    defer vk.freeMemory(device, staging_buffer_memory, null);
+
+    {
+        var gpu_ptr: ?*anyopaque = null;
+        switch (vk.mapMemory(
+            device,
+            staging_buffer_memory,
+            0,
+            buffer_size,
+            .initEmpty(),
+            &gpu_ptr,
+        )) {
+            .success => {},
+            else => return error.FailedToMapMemory,
+        }
+        defer vk.unmapMemory(device, staging_buffer_memory);
+        var gpu_data: [*]T = @ptrCast(@alignCast(gpu_ptr));
+        @memcpy(gpu_data[0..data.len], data);
+    }
+
+    buffer.* = try createBuffer(
+        device,
+        buffer_size,
+        .initMany(&.{ .transfer_dst_bit, bit_type }),
+    );
+    buffer_memory.* = try createBufferMemory(
+        physical_device,
+        device,
+        buffer,
+        .initMany(&.{.device_local_bit}),
+    );
+
+    try copyBuffer(
+        device,
+        command_pool,
+        graphics_queue,
+        staging_buffer,
+        buffer,
+        buffer_size,
+    );
+}
+
+fn createBuffer(
+    device: vk.Device,
+    size: vk.DeviceSize,
+    usage: vk.BufferUsageFlags,
+) !vk.Buffer {
     const create_info = vk.BufferCreateInfo{
-        .size = @sizeOf(T) * data.len,
-        .usage = .init(.vertex_buffer_bit),
+        .size = size,
+        .usage = usage,
         .sharing_mode = .exclusive,
     };
 
-    switch (vk.createBuffer(device, &create_info, null, buffer)) {
-        .success => {},
-        else => return error.FailedToCreateVertexBuffer,
-    }
+    var buffer: vk.Buffer = .null;
+    return switch (vk.createBuffer(device, &create_info, null, &buffer)) {
+        .success => buffer,
+        else => error.FailedToCreateBuffer,
+    };
+}
 
+fn createBufferMemory(
+    physical_device: vk.PhysicalDevice,
+    device: vk.Device,
+    buffer: vk.Buffer,
+    props: vk.MemoryPropertyFlags,
+) !vk.DeviceMemory {
     var mem_reqs: vk.MemoryRequirements = .{};
     vk.getBufferMemoryRequirements(device, buffer.*, &mem_reqs);
+
     const alloc_info = vk.MemoryAllocateInfo{
         .allocation_size = mem_reqs.size,
         .memory_type_index = try findMemoryType(
             physical_device,
             mem_reqs.memory_type_bits,
-            .initMany(&.{ .host_visible_bit, .host_coherent_bit }),
+            props,
         ),
     };
 
-    switch (vk.allocateMemory(device, &alloc_info, null, memory)) {
+    var memory: vk.DeviceMemmory = .null;
+    switch (vk.allocateMemory(device, &alloc_info, null, &memory)) {
         .success => {},
-        else => return error.FailedToAllocateVertexBufferMemory,
+        else => return error.FailedToAllocateMemory,
     }
 
-    switch (vk.bindBufferMemory(device, buffer.*, memory.*, 0)) {
-        .success => {},
+    switch (vk.bindBufferMemory(device, buffer, memory, 0)) {
+        .success => memory,
         else => return error.FailedToBindBufferMemory,
     }
+}
 
-    var p_data: ?*anyopaque = null;
-    switch (vk.mapMemory(device, memory.*, 0, create_info.size, .initEmpty(), &p_data)) {
+fn copyBuffer(
+    device: vk.Device,
+    command_pool: vk.CommandPool,
+    graphics_queue: vk.Queue,
+    src: vk.Buffer,
+    dst: vk.Buffer,
+    size: vk.DeviceSize,
+) !void {
+    // allocate command buffers
+    const alloc_info = vk.CommandBufferAllocateInfo{
+        .level = .primary,
+        .command_pool = command_pool,
+        .command_buffer_count = 1,
+    };
+    var command_buffer: vk.CommandBuffer = .null;
+    switch (vk.allocateCommandBuffers(device, &alloc_info, &command_buffer)) {
         .success => {},
-        else => return error.FailedToMapMemory,
+        else => return error.FailedToAllocateCommandBuffer,
     }
-    var gpu_vertices: [*]Vertex = @ptrCast(@alignCast(p_data));
-    @memcpy(gpu_vertices[0..data.len], data);
-    vk.unmapMemory(device, memory.*);
+    defer vk.freeCommandBuffers(device, command_pool, 1, &command_buffer);
+    // begin + end command buffer
+    const begin_info = vk.CommandBufferBeginInfo{
+        .flags = .init(.one_time_submit_bit),
+    };
+    switch (vk.beginCommandBuffer(command_buffer, &begin_info)) {
+        .success => {},
+        else => return error.FailedToBeginCommandBuffer,
+    }
+    var copy_region = vk.BufferCopy{
+        .size = size,
+    };
+    vk.cmdCopyBuffer(command_buffer, src, dst, 1, &copy_region);
+    vk.endCommandBuffer(command_buffer);
+    // submit
+    const submit_info = vk.SubmitInfo{
+        .command_buffer_count = 1,
+        .p_command_buffers = &command_buffer,
+    };
+    vk.queueSubmit(graphics_queue, 1, &submit_info, .null);
+    vk.queueWaitIdle(graphics_queue);
 }
 
 fn findMemoryType(
@@ -902,6 +1036,8 @@ fn recordCommandBuffer(self: *Engine, image_index: u32) !void {
         const vertex_buffers = [_]vk.Buffer{self.vertex_buffer};
         const offsets = [_]vk.DeviceSize{0};
         vk.cmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, &offsets);
+        vk.cmdBindIndexBuffer(command_buffer, &self.index_buffer, 0, .uint16);
+        vk.cmdDrawIndexed(command_buffer, indices.len, 1, 0, 0, 0);
 
         vk.cmdDraw(command_buffer, @as(u32, @truncate(vertices.len)), 1, 0, 0);
     }
