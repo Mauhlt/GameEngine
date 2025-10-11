@@ -21,5 +21,5 @@ pub fn main() !void {
 
     // var i: usize = 0;
     // while (i < 100_000_000) : (i += 1) {}
-    // try engine.run();
+    try engine.run();
 }

@@ -76,6 +76,23 @@ pub fn init(
     };
 }
 
+pub fn chooseFormat(self: *const SwapchainSupportDetails) vk.SurfaceFormatKHR {
+    for (self.formats[0..self.n_formats]) |format| {
+        if (format.format == .b8g8r8_srgb and format.color_space == .srgb_nonlinear) {
+            return format;
+        }
+    } else return self.formats[0];
+}
+
+pub fn choosePresentMode(self: *const SwapchainSupportDetails) vk.PresentModeKHR {
+    for (self.present_modes[0..self.n_present_modes]) |present_mode| {
+        switch (present_mode) {
+            .mailbox => return present_mode,
+            else => {},
+        }
+    } else return .fifo;
+}
+
 pub fn chooseExtent(
     self: *const SwapchainSupportDetails,
     window: *const WindowHandle,
@@ -97,23 +114,4 @@ pub fn chooseExtent(
             self.capabilities.max_image_extent.height,
         ),
     };
-}
-
-pub fn choosePresentMode(self: *const SwapchainSupportDetails) vk.PresentModeKHR {
-    for (self.present_modes[0..self.n_present_modes]) |present_mode| {
-        switch (present_mode) {
-            .mailbox => return present_mode,
-            else => {},
-        }
-    }
-    return .fifo;
-}
-
-pub fn chooseFormat(self: *const SwapchainSupportDetails) vk.SurfaceFormatKHR {
-    for (self.formats[0..self.n_formats]) |format| {
-        if (format.format == .b8g8r8_srgb and format.color_space == .srgb_nonlinear) {
-            return format;
-        }
-    }
-    return self.formats[0];
 }
