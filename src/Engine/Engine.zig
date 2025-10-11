@@ -13,10 +13,11 @@ const required_device_extensions = [_][*:0]const u8{
 };
 const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
-const vertices = [3]Vertex{
-    .{ .pos = [2]f32{ 0, -0.5 }, .color = [3]f32{ 1, 1, 1 } },
-    .{ .pos = [2]f32{ 0.5, 0.5 }, .color = [3]f32{ 0, 1, 0 } },
-    .{ .pos = [2]f32{ -0.5, 0.5 }, .color = [3]f32{ 0, 0, 1 } },
+const vertices = [4]Vertex{
+    .{ .pos = [2]f32{ -0.5, -0.5 }, .color = [3]f32{ 1, 0, 0 } },
+    .{ .pos = [2]f32{ 0.5, -0.5 }, .color = [3]f32{ 0, 1, 0 } },
+    .{ .pos = [2]f32{ 0.5, 0.5 }, .color = [3]f32{ 0, 0, 1 } },
+    .{ .pos = [2]f32{ -0.5, 0.5 }, .color = [3]f32{ 1, 1, 1 } },
 };
 const indices = [6]u16{ 0, 1, 2, 2, 3, 0 };
 const Engine = @This();
@@ -852,7 +853,7 @@ fn createBufferAndMemory(
     buffer_memory.* = try createBufferMemory(
         physical_device,
         device,
-        buffer,
+        buffer.*,
         .initMany(&.{.device_local_bit}),
     );
 
@@ -861,7 +862,7 @@ fn createBufferAndMemory(
         command_pool,
         graphics_queue,
         staging_buffer,
-        buffer,
+        buffer.*,
         buffer_size,
     );
 }
@@ -891,7 +892,7 @@ fn createBufferMemory(
     props: vk.MemoryPropertyFlags,
 ) !vk.DeviceMemory {
     var mem_reqs: vk.MemoryRequirements = .{};
-    vk.getBufferMemoryRequirements(device, buffer.*, &mem_reqs);
+    vk.getBufferMemoryRequirements(device, buffer, &mem_reqs);
 
     const alloc_info = vk.MemoryAllocateInfo{
         .allocation_size = mem_reqs.size,
@@ -902,16 +903,16 @@ fn createBufferMemory(
         ),
     };
 
-    var memory: vk.DeviceMemmory = .null;
+    var memory: vk.DeviceMemory = .null;
     switch (vk.allocateMemory(device, &alloc_info, null, &memory)) {
         .success => {},
         else => return error.FailedToAllocateMemory,
     }
 
-    switch (vk.bindBufferMemory(device, buffer, memory, 0)) {
+    return switch (vk.bindBufferMemory(device, buffer, memory, 0)) {
         .success => memory,
-        else => return error.FailedToBindBufferMemory,
-    }
+        else => error.FailedToBindBufferMemory,
+    };
 }
 
 fn copyBuffer(
@@ -946,14 +947,26 @@ fn copyBuffer(
         .size = size,
     };
     vk.cmdCopyBuffer(command_buffer, src, dst, 1, &copy_region);
-    vk.endCommandBuffer(command_buffer);
+    switch (vk.endCommandBuffer(command_buffer)) {
+        .success => {},
+        else => return error.FailedToEndCommandBuffer,
+    }
+
     // submit
     const submit_info = vk.SubmitInfo{
         .command_buffer_count = 1,
         .p_command_buffers = &command_buffer,
     };
-    vk.queueSubmit(graphics_queue, 1, &submit_info, .null);
-    vk.queueWaitIdle(graphics_queue);
+
+    switch (vk.queueSubmit(graphics_queue, 1, &submit_info, .null)) {
+        .success => {},
+        else => return error.FailedToSubmitQueue,
+    }
+
+    switch (vk.queueWaitIdle(graphics_queue)) {
+        .success => {},
+        else => return error.FailedToIdleQueue,
+    }
 }
 
 fn findMemoryType(
@@ -1036,7 +1049,7 @@ fn recordCommandBuffer(self: *Engine, image_index: u32) !void {
         const vertex_buffers = [_]vk.Buffer{self.vertex_buffer};
         const offsets = [_]vk.DeviceSize{0};
         vk.cmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, &offsets);
-        vk.cmdBindIndexBuffer(command_buffer, &self.index_buffer, 0, .uint16);
+        vk.cmdBindIndexBuffer(command_buffer, self.index_buffer, 0, .uint16);
         vk.cmdDrawIndexed(command_buffer, indices.len, 1, 0, 0, 0);
 
         vk.cmdDraw(command_buffer, @as(u32, @truncate(vertices.len)), 1, 0, 0);
