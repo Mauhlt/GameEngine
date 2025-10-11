@@ -50,12 +50,19 @@ pub fn build(b: *std.Build) !void {
     }
     b.installArtifact(exe);
 
-    var dir = std.fs.cwd().openDir("src/Shaders", .{ .iterate = true }) catch unreachable;
+    const allo = std.heap.page_allocator;
+    var exe_path_buf: [1024]u8 = undefined;
+    var exe_path = std.fs.selfExePath(&exe_path_buf) catch unreachable;
+    const idx = std.mem.indexOf(u8, exe_path, ".zig-cache").?;
+    const basepath = exe_path[0..idx];
+    const path = std.fs.path.join(allo, &.{ basepath, "src", "Shaders" }) catch unreachable;
+    defer allo.free(path);
+    var dir = std.fs.openDirAbsolute(path, .{ .iterate = true }) catch unreachable;
     defer dir.close();
     var it = dir.iterate();
     while (try it.next()) |item| {
         switch (item.kind) {
-            .file => if (isShader(item.name)) try compileShader1(item.name),
+            .file => if (isShader(item.name)) try compileShader(item.name),
             else => continue,
         }
     }
@@ -91,7 +98,7 @@ fn isShader(name: []const u8) bool {
     } else return false;
 }
 
-fn compileShader1(name: []const u8) !void {
+fn compileShader(name: []const u8) !void {
     const allo = std.heap.page_allocator;
     // base
     var buf: [1024]u8 = undefined;

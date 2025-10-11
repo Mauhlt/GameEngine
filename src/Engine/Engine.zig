@@ -4,7 +4,10 @@ const vk = @import("..\\vulkan\\vulkan.zig");
 const QFI = @import("QueueFamilyIndices.zig");
 const SSD = @import("SwapchainSupportDetails.zig");
 const Vertex = @import("Vertex.zig");
-const required_instance_extensions = [_][*:0]const u8{ vk.ExtensionName.win32_surface, vk.ExtensionName.surface, vk.ExtensionName.nv_acquire_winrt_display, vk.ExtensionName.nv_dedicated_allocation };
+const required_instance_extensions = [_][*:0]const u8{
+    vk.ExtensionName.win32_surface,
+    vk.ExtensionName.surface,
+};
 const required_device_extensions = [_][*:0]const u8{
     vk.ExtensionName.swapchain,
 };
@@ -58,11 +61,15 @@ pub fn init(
     comptime app_name: [*:0]const u8,
     comptime window_title: [*:0]const u8,
     engine_name: [*:0]const u8,
-    width: u32,
-    height: u32,
+    window_size: vk.Extent2D,
 ) !Engine {
     // base
-    var window = try WindowHandle.init(std.mem.span(app_name), std.mem.span(window_title), width, height);
+    var window = try WindowHandle.init(
+        std.mem.sliceTo(app_name, 0),
+        std.mem.sliceTo(window_title, 0),
+        window_size.width,
+        window_size.height,
+    );
     errdefer window.deinit();
     const instance = try createInstance(app_name, engine_name);
     errdefer vk.destroyInstance(instance, null);
@@ -84,7 +91,6 @@ pub fn init(
     try createImages(device, swapchain, &n_images, &images);
     const format = ssd.chooseFormat();
     const extent = ssd.chooseExtent(&window);
-
     var image_views = [_]vk.ImageView{.null} ** 3;
     for (0..n_images) |i| {
         image_views[i] = try createImageView(device, format.format, images[i]);
@@ -94,13 +100,11 @@ pub fn init(
     };
     const render_pass = try createRenderPass(device, format.format);
     errdefer vk.destroyRenderPass(device, render_pass, null);
-
     var framebuffers = [_]vk.Framebuffer{.null} ** 3;
     for (0..n_images) |i| {
         framebuffers[i] = try createFramebuffer(device, extent, image_views[i], render_pass);
-        errdefer for (0..i) |j| vk.destroyFramebuffer(device, framebuffers[j], null);
     }
-    errdefer for (framebuffers) |framebuffer| {
+    errdefer for (framebuffers[0..n_images]) |framebuffer| {
         vk.destroyFramebuffer(device, framebuffer, null);
     };
     // pipeline
@@ -108,39 +112,36 @@ pub fn init(
     errdefer vk.destroyPipelineLayout(device, pipeline_layout, null);
     const pipeline = try createGraphicsPipeline(allo, device, extent, render_pass, pipeline_layout);
     errdefer vk.destroyPipeline(device, pipeline, null);
-    //// commands
-    // const command_pool = try createCommandPool(surface, physical_device, device);
-    // errdefer vk.destroyCommandPool(device, command_pool, null);
-    //
-    // var vertex_buffer: vk.Buffer = .null;
-    // var vertex_buffer_memory: vk.DeviceMemory = .null;
-    // try createBuffer(
-    //     Vertex,
-    //     physical_device,
-    //     device,
-    //     &vertices,
-    //     &vertex_buffer,
-    //     &vertex_buffer_memory,
-    // );
-    //
-    // var command_buffers = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT;
-    // try createCommandBuffers(device, command_pool, &command_buffers);
-    // // sync objects
-    // var image_available_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
-    // var render_finished_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
-    // var in_flight_fences = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT;
-    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-    //     // semaphores
-    //     image_available_semaphores[i] = try createSemaphore(device);
-    //     errdefer vk.destroySemaphore(device, image_available_semaphores[i], null);
-    //     render_finished_semaphores[i] = try createSemaphore(device);
-    //     errdefer vk.destroySemaphore(device, render_finished_semaphores[i], null);
-    //     // fences
-    //     in_flight_fences[i] = try createFence(device);
-    //     errdefer vk.destroyFence(device, in_flight_fences[i], null);
-    // }
-    // // show window
-    // window.show();
+    // commands
+    const command_pool = try createCommandPool(surface, physical_device, device);
+    errdefer vk.destroyCommandPool(device, command_pool, null);
+    var vertex_buffer: vk.Buffer = .null;
+    var vertex_buffer_memory: vk.DeviceMemory = .null;
+    try createBuffer(
+        Vertex,
+        physical_device,
+        device,
+        &vertices,
+        &vertex_buffer,
+        &vertex_buffer_memory,
+    );
+    var command_buffers = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT;
+    try createCommandBuffers(device, command_pool, &command_buffers);
+    // sync objects
+    var image_available_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
+    var render_finished_semaphores = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT;
+    var in_flight_fences = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT;
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        // semaphores
+        image_available_semaphores[i] = try createSemaphore(device);
+        errdefer vk.destroySemaphore(device, image_available_semaphores[i], null);
+        render_finished_semaphores[i] = try createSemaphore(device);
+        errdefer vk.destroySemaphore(device, render_finished_semaphores[i], null);
+        // fences
+        in_flight_fences[i] = try createFence(device);
+    }
+    // show window
+    window.show();
 
     return .{
         // base
@@ -164,15 +165,15 @@ pub fn init(
         .render_pass = render_pass,
         .pipeline_layout = pipeline_layout,
         .pipeline = pipeline,
-        // // commands
-        // .command_pool = command_pool,
-        // .vertex_buffer = vertex_buffer,
-        // .vertex_buffer_memory = vertex_buffer_memory,
-        // .command_buffers = command_buffers,
-        // // sync objects
-        // .image_available_semaphores = image_available_semaphores,
-        // .render_finished_semaphores = render_finished_semaphores,
-        // .in_flight_fences = in_flight_fences,
+        // commands
+        .command_pool = command_pool,
+        .vertex_buffer = vertex_buffer,
+        .vertex_buffer_memory = vertex_buffer_memory,
+        .command_buffers = command_buffers,
+        // sync objects
+        .image_available_semaphores = image_available_semaphores,
+        .render_finished_semaphores = render_finished_semaphores,
+        .in_flight_fences = in_flight_fences,
     };
 }
 
@@ -220,7 +221,7 @@ fn createInstance(app_name: [*:0]const u8, engine_name: [*:0]const u8) !vk.Insta
         .application_version = vk.makeApiVersion(0, 1, 0, 0),
         .p_engine_name = engine_name,
         .engine_version = vk.makeApiVersion(0, 1, 0, 0),
-        .api_version = vk.makeApiVersion(0, 1, 1, 0),
+        .api_version = vk.makeApiVersion(0, 1, 0, 0),
     };
 
     var n_props: u32 = 0;
@@ -267,9 +268,10 @@ fn printExtensionProperties(
     std.debug.print("{s} Extensions:\n", .{title});
     std.debug.print("# of Extensions: {}\n", .{props.len});
     for (props) |prop| {
-        const len = std.mem.indexOfScalar(u8, &prop.extension_name, 0) //
-            orelse prop.extension_name.len;
-        const name = prop.extension_name[0..len];
+        // const len = std.mem.indexOfScalar(u8, &prop.extension_name, 0) //
+        //     orelse prop.extension_name.len;
+        // const name = prop.extension_name[0..len];
+        const name: []const u8 = std.mem.sliceTo(&prop.extension_name, 0);
         std.debug.print("{s}\n", .{name});
     }
     std.debug.print("\n", .{});
@@ -319,8 +321,9 @@ fn printDevices(n_devices: u32, devices: *[32]vk.PhysicalDevice) void {
     for (devices[0..n_devices]) |device| {
         var props: vk.PhysicalDeviceProperties = undefined;
         vk.getPhysicalDeviceProperties(device, &props);
-        const len = std.mem.indexOfScalar(u8, &props.device_name, 0).?;
-        const name = props.device_name[0..len];
+        // const len = std.mem.indexOfScalar(u8, &props.device_name, 0).?;
+        // const name = props.device_name[0..len];
+        const name: []const u8 = std.mem.sliceTo(&props.device_name, 0);
         std.debug.print("{s}: {s}\n", .{ name, @tagName(props.device_type) });
     }
     std.debug.print("\n", .{});
@@ -340,10 +343,11 @@ fn areDeviceExtensionsSupported(device: vk.PhysicalDevice) bool {
     getDeviceExtensionProperties(device, &n_props, &props) catch return false;
 
     outer: for (required_device_extensions) |rde| {
-        const name1 = std.mem.span(rde);
+        const name1: []const u8 = std.mem.span(rde);
         for (props[0..n_props]) |prop| {
-            const len = std.mem.indexOfScalar(u8, &prop.extension_name, 0).?;
-            const name2 = prop.extension_name[0..len];
+            const name2: []const u8 = std.mem.sliceTo(&prop.extension_name, 0);
+            // const len = std.mem.indexOfScalar(u8, &prop.extension_name, 0).?;
+            // const name2 = prop.extension_name[0..len];
             if (std.mem.eql(u8, name1, name2)) continue :outer;
         }
         return false;
@@ -606,11 +610,11 @@ fn createGraphicsPipeline(
     render_pass: vk.RenderPass,
     pipeline_layout: vk.PipelineLayout,
 ) !vk.Pipeline {
-    const vert_code = try readFile(allo, "vert.spv");
+    const vert_code = try readFile(allo, "tri.vert.spv");
     defer allo.free(vert_code);
     // std.debug.print("Vert Code Size: {}\n", .{vert_code.len});
 
-    const frag_code = try readFile(allo, "frag.spv");
+    const frag_code = try readFile(allo, "tri.frag.spv");
     defer allo.free(frag_code);
     // std.debug.print("Frag Code Size: {}\n", .{frag_code.len});
 
@@ -746,18 +750,16 @@ fn createGraphicsPipeline(
 }
 
 fn readFile(allo: std.mem.Allocator, filename: []const u8) ![]const u8 {
-    _ = filename;
-    var path_buffer: [1024]u8 = undefined;
-    const path = std.fs.cwd().realpath("Shaders", &path_buffer);
-    std.debug.print("Path: {s}\n", .{path});
-
-    // std.debug.print("Path: {s}\n", .{path});
-
-    // var file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
-    // defer file.close();
-    //
-    // const code = try file.readToEndAlloc(allo, 1024 * 1024);
-    // return code;
+    var exe_path_buf: [1024]u8 = undefined;
+    const exe_path = try std.fs.selfExePath(&exe_path_buf);
+    const idx = std.mem.indexOf(u8, exe_path, "zig-out").?;
+    const basepath = exe_path[0..idx];
+    const path = try std.fs.path.join(allo, &.{ basepath, "src", "Shaders", filename });
+    defer allo.free(path);
+    var file = try std.fs.openFileAbsolute(path, .{ .mode = .read_only });
+    defer file.close();
+    const code = try file.readToEndAlloc(allo, 1024 * 1024);
+    return code;
 }
 
 fn createShaderModule(device: vk.Device, code: []const u8) !vk.ShaderModule {
@@ -1044,6 +1046,7 @@ fn drawFrame(self: *Engine) !void {
 }
 
 fn recreateSwapchain(self: *Engine) !void {
+    // wait for window to resize before running - otherwise stall here
     var size = self.window.clientSize();
     while (size.w == 0 or size.h == 0) {
         size = self.window.clientSize();
@@ -1055,6 +1058,10 @@ fn recreateSwapchain(self: *Engine) !void {
         else => return error.FailedToIdle,
     }
 
+    // deinit old swapchain
+    self.deinitSwapchain();
+
+    // recreate swapchain
     const ssd = try SSD.init(self.surface, self.physical_device);
     self.swapchain = try createSwapchain(
         &self.window,
@@ -1063,6 +1070,10 @@ fn recreateSwapchain(self: *Engine) !void {
         self.device,
         &ssd,
     );
+    self.format = ssd.chooseFormat();
+    self.extent = ssd.chooseExtent(&self.window);
+    self.n_images = try getNumImages(self.device, self.swapchain);
+    try createImages(self.device, self.swapchain, &self.n_images, &self.images);
     for (0..self.n_images) |i| {
         self.image_views[i] = try createImageView(self.device, self.format.format, self.images[i]);
         self.framebuffers[i] = try createFramebuffer(self.device, self.extent, self.image_views[i], self.render_pass);

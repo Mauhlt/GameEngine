@@ -12,12 +12,14 @@ pub fn main() !void {
         "HokaAndHoshi",
         "Hoka And Hoshi",
         "EurekaEngine",
-        800,
-        600,
+        .{
+            .width = 800,
+            .height = 600,
+        },
     );
     defer engine.deinit();
 
     var i: usize = 0;
-    while (i < 10_000_000_000) : (i += 1) {}
-    // try engine.run();
+    while (i < 100_000_000) : (i += 1) {}
+    try engine.run();
 }
