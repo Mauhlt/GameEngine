@@ -13,55 +13,67 @@ pub fn init(
     surface: vk.SurfaceKHR,
     physical_device: vk.PhysicalDevice,
 ) !SwapchainSupportDetails {
-    var self: SwapchainSupportDetails = undefined;
+    var capabilities: vk.SurfaceCapabilitiesKHR = undefined;
     switch (vk.getPhysicalDeviceSurfaceCapabilitiesKHR(
         physical_device,
         surface,
-        &self.capabilities,
+        &capabilities,
     )) {
         .success => {},
         else => return error.FailedTogetSurfaceCapabilities,
     }
 
+    var n_formats: u32 = 0;
     switch (vk.getPhysicalDeviceSurfaceFormatsKHR(
         physical_device,
         surface,
-        &self.n_formats,
+        &n_formats,
         null,
     )) {
         .success => {},
         else => return error.FailedToGetSurfaceFormats,
     }
+    if (n_formats == 0) return error.FailedToFindDeviceSurfaceFormats;
+    var formats: [32]vk.SurfaceFormatKHR = undefined;
     switch (vk.getPhysicalDeviceSurfaceFormatsKHR(
         physical_device,
         surface,
-        &self.n_formats,
-        &self.formats,
+        &n_formats,
+        &formats,
     )) {
         .success => {},
         else => return error.FailedToGetSurfaceFormats,
     }
 
+    var n_present_modes: u32 = 0;
     switch (vk.getPhysicalDeviceSurfacePresentModesKHR(
         physical_device,
         surface,
-        &self.n_present_modes,
+        &n_present_modes,
         null,
     )) {
         .success => {},
         else => return error.FailedToGetSurfacePresentModes,
     }
+    if (n_present_modes == 0) return error.FailedToFindSurfacePresentModes;
+    var present_modes: [32]vk.PresentModeKHR = undefined;
     switch (vk.getPhysicalDeviceSurfacePresentModesKHR(
         physical_device,
         surface,
-        &self.n_present_modes,
-        &self.present_modes,
+        &n_present_modes,
+        &present_modes,
     )) {
         .success => {},
         else => return error.FailedToGetSurfacePresentModes,
     }
 
-    return self;
+    return SwapchainSupportDetails{
+        .capabilities = capabilities,
+        .n_formats = n_formats,
+        .formats = formats,
+        .n_present_modes = n_present_modes,
+        .present_modes = present_modes,
+    };
 }
 
 pub fn chooseExtent(

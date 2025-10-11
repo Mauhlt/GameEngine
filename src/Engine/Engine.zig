@@ -302,18 +302,18 @@ fn pickPhysicalDevice(
         .success => {},
         else => return error.FailedToEnumeratePhysicalDevices,
     }
+    if (n_devices == 0) return error.NoGPUsSupportVulkan;
     if (n_devices > 32) return error.TooManyPhysicalDevicesFound;
-    var physical_devices: [32]vk.PhysicalDevice = [_]vk.PhysicalDevice{.null} ** 32;
-    switch (vk.enumeratePhysicalDevices(instance, &n_devices, &physical_devices)) {
+    var devices: [32]vk.PhysicalDevice = [_]vk.PhysicalDevice{.null} ** 32;
+    switch (vk.enumeratePhysicalDevices(instance, &n_devices, &devices)) {
         .success => {},
         else => return error.FailedToEnumeratePhysicalDevices,
     }
     // printDevices(n_devices, &physical_devices);
-
-    for (physical_devices[0..n_devices]) |physical_device| {
-        if (isDeviceSuitable(surface, physical_device)) return physical_device;
+    for (devices[0..n_devices]) |device| {
+        if (isDeviceSuitable(surface, device)) return device;
     }
-    return error.FailedToFindPhysicalDevice;
+    return error.FailedToFindSuitableGPU;
 }
 
 fn printDevices(n_devices: u32, devices: *[32]vk.PhysicalDevice) void {
@@ -346,13 +346,9 @@ fn areDeviceExtensionsSupported(device: vk.PhysicalDevice) bool {
         const name1: []const u8 = std.mem.span(rde);
         for (props[0..n_props]) |prop| {
             const name2: []const u8 = std.mem.sliceTo(&prop.extension_name, 0);
-            // const len = std.mem.indexOfScalar(u8, &prop.extension_name, 0).?;
-            // const name2 = prop.extension_name[0..len];
             if (std.mem.eql(u8, name1, name2)) continue :outer;
-        }
-        return false;
-    }
-    return true;
+        } else return false;
+    } else return true;
 }
 
 fn createLogicalDevice(

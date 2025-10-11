@@ -20,7 +20,6 @@ pub fn init(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) !QueueFamilyIndic
         if (family.queue_flags.contains(.graphics_bit)) {
             self.graphics_family = @truncate(i);
         }
-
         var present_support: vk.Bool32 = .false;
         switch (vk.getPhysicalDeviceSurfaceSupportKHR(
             device,
@@ -31,15 +30,12 @@ pub fn init(surface: vk.SurfaceKHR, device: vk.PhysicalDevice) !QueueFamilyIndic
             .success => {},
             else => continue,
         }
-
         switch (present_support) {
             .true => self.present_family = @truncate(i),
             else => {},
         }
-
         if (self.isComplete()) break;
     }
-
     return self;
 }
 
