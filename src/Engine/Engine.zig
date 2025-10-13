@@ -3,7 +3,24 @@ const WindowHandle = @import("WindowHandle.zig");
 const vk = @import("..\\vulkan\\vulkan.zig");
 const QFI = @import("QueueFamilyIndices.zig");
 const SSD = @import("SwapchainSupportDetails.zig");
+const UBO = @import("UniformBufferObject.zig");
+const Chrono = @import("Chrono.zig");
+// Math
+const Matrix = @import("../math/Matrix.zig");
+const Vector = @import("../math/Vector.zig");
+const degreesToRadians = std.math.degreesToRadians;
+// Model
 const Vertex = @import("Vertex.zig");
+// right = +x, down = +y, in = +z
+// tl tr br br bl tl
+const vertices = [4]Vertex{
+    .{ .pos = [2]f32{ -0.5, -0.5 }, .color = [3]f32{ 1, 0, 0 } }, // TL
+    .{ .pos = [2]f32{ 0.5, -0.5 }, .color = [3]f32{ 0, 1, 0 } }, // TR
+    .{ .pos = [2]f32{ 0.5, 0.5 }, .color = [3]f32{ 0, 0, 1 } }, // BR
+    .{ .pos = [2]f32{ -0.5, 0.5 }, .color = [3]f32{ 1, 1, 1 } }, // BL
+};
+const indices = [6]u16{ 0, 1, 2, 2, 3, 0 };
+// extensions
 const required_instance_extensions = [_][*:0]const u8{
     vk.ExtensionName.win32_surface,
     vk.ExtensionName.surface,
@@ -11,15 +28,9 @@ const required_instance_extensions = [_][*:0]const u8{
 const required_device_extensions = [_][*:0]const u8{
     vk.ExtensionName.swapchain,
 };
+// constants
 const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
-const vertices = [4]Vertex{
-    .{ .pos = [2]f32{ -0.5, -0.5 }, .color = [3]f32{ 1, 0, 0 } },
-    .{ .pos = [2]f32{ 0.5, -0.5 }, .color = [3]f32{ 0, 1, 0 } },
-    .{ .pos = [2]f32{ 0.5, 0.5 }, .color = [3]f32{ 0, 0, 1 } },
-    .{ .pos = [2]f32{ -0.5, 0.5 }, .color = [3]f32{ 1, 1, 1 } },
-};
-const indices = [6]u16{ 0, 1, 2, 2, 3, 0 };
 const Engine = @This();
 // base
 window: WindowHandle = undefined,
@@ -43,6 +54,7 @@ image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
 framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
 // pipeline
 render_pass: vk.RenderPass = .null,
+descriptor_set_layout: vk.DescriptorSetLayout = .null,
 pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // commands
@@ -53,6 +65,10 @@ vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
 index_buffer: vk.Buffer = .null,
 index_buffer_memory: vk.DeviceMemory = .null,
+// uniform buffers
+uniform_buffers: [MAX_FRAMES_IN_FLIGHT]vk.Buffer = [_]vk.Buffer{.null} ** MAX_FRAMES_IN_FLIGHT,
+uniform_buffer_memories: [MAX_FRAMES_IN_FLIGHT]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** MAX_FRAMES_IN_FLIGHT,
+uniform_buffer_maps: [MAX_FRAMES_IN_FLIGHT]?*anyopaque = [_]?*anyopaque{null} ** MAX_FRAMES_IN_FLIGHT,
 // sync objects
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
@@ -60,6 +76,7 @@ in_flight_fences: [MAX_FRAMES_IN_FLIGHT]vk.Fence = [_]vk.Fence{.null} ** MAX_FRA
 // flags
 current_frame: u32 = 0,
 framebuffer_resized: bool = false,
+chrono: Chrono = undefined,
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -105,7 +122,8 @@ pub fn init(
     for (0..n_images) |i| framebuffers[i] = try createFramebuffer(device, extent, image_views[i], render_pass);
     errdefer for (framebuffers[0..n_images]) |framebuffer| vk.destroyFramebuffer(device, framebuffer, null);
     // pipeline
-    const pipeline_layout = try createGraphicsPipelineLayout(device);
+    var descriptor_set_layout = try createDescriptorSetLayout(device);
+    const pipeline_layout = try createGraphicsPipelineLayout(device, &descriptor_set_layout);
     errdefer vk.destroyPipelineLayout(device, pipeline_layout, null);
     const pipeline = try createGraphicsPipeline(allo, device, render_pass, pipeline_layout);
     errdefer vk.destroyPipeline(device, pipeline, null);
@@ -126,7 +144,6 @@ pub fn init(
         .vertex_buffer_bit,
         &vertices,
     );
-
     var index_buffer: vk.Buffer = .null;
     var index_buffer_memory: vk.DeviceMemory = .null;
     try createBufferAndMemory(
@@ -140,7 +157,16 @@ pub fn init(
         .index_buffer_bit,
         &indices,
     );
-
+    var uniform_buffers = [_]vk.Buffer{.null} ** MAX_FRAMES_IN_FLIGHT;
+    var uniform_buffer_memories = [_]vk.DeviceMemory{.null} ** MAX_FRAMES_IN_FLIGHT;
+    var uniform_buffer_maps = [_]?*anyopaque{null} ** MAX_FRAMES_IN_FLIGHT;
+    try createUniformBuffers(
+        physical_device,
+        device,
+        &uniform_buffers,
+        &uniform_buffer_memories,
+        &uniform_buffer_maps,
+    );
     var command_buffers = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT;
     try createCommandBuffers(device, command_pool, &command_buffers);
     // sync objects
@@ -156,6 +182,7 @@ pub fn init(
         // fences
         in_flight_fences[i] = try createFence(device);
     }
+    const chrono = Chrono.init();
     // show window
     window.show();
 
@@ -179,6 +206,7 @@ pub fn init(
         .framebuffers = framebuffers,
         // pipeline
         .render_pass = render_pass,
+        .descriptor_set_layout = descriptor_set_layout,
         .pipeline_layout = pipeline_layout,
         .pipeline = pipeline,
         // commands
@@ -187,11 +215,16 @@ pub fn init(
         .vertex_buffer_memory = vertex_buffer_memory,
         .index_buffer = index_buffer,
         .index_buffer_memory = index_buffer_memory,
+        .uniform_buffers = uniform_buffers,
+        .uniform_buffer_memories = uniform_buffer_memories,
+        .uniform_buffer_maps = uniform_buffer_maps,
         .command_buffers = command_buffers,
         // sync objects
         .image_available_semaphores = image_available_semaphores,
         .render_finished_semaphores = render_finished_semaphores,
         .in_flight_fences = in_flight_fences,
+        // extra
+        .chrono = chrono,
     };
 }
 
@@ -214,6 +247,13 @@ pub fn deinit(self: *Engine) void {
     }
     // commands
     vk.destroyCommandPool(self.device, self.command_pool, null);
+    // uniform buffers
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        vk.destroyBuffer(self.device, self.uniform_buffers[i], null);
+        vk.freeMemory(self.device, self.uniform_buffer_memories[i], null);
+    }
+    // descriptor set layout
+    vk.destroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
     // render pass
     vk.destroyRenderPass(self.device, self.render_pass, null);
     // base
@@ -603,10 +643,39 @@ fn createFramebuffer(
     };
 }
 
-fn createGraphicsPipelineLayout(device: vk.Device) !vk.PipelineLayout {
+fn createDescriptorSetLayout(device: vk.Device) !vk.DescriptorSetLayout {
+    const ubo_layout_binding = vk.DescriptorSetLayoutBinding{
+        .binding = 0,
+        .descriptor_type = .uniform_buffer,
+        .descriptor_count = 1,
+        .stage_flags = .init(.vertex_bit),
+        .p_immutable_samplers = null,
+    };
+
+    const create_info = vk.DescriptorSetLayoutCreateInfo{
+        .binding_count = 1,
+        .p_bindings = &ubo_layout_binding,
+    };
+
+    var descriptor_set_layout: vk.DescriptorSetLayout = .null;
+    return switch (vk.createDescriptorSetLayout(
+        device,
+        &create_info,
+        null,
+        &descriptor_set_layout,
+    )) {
+        .success => descriptor_set_layout,
+        else => error.FailedToCreateDescriptorSetLayout,
+    };
+}
+
+fn createGraphicsPipelineLayout(
+    device: vk.Device,
+    descriptor_set_layout: *vk.DescriptorSetLayout,
+) !vk.PipelineLayout {
     const create_info = vk.PipelineLayoutCreateInfo{
-        .set_layout_count = 0,
-        .p_set_layouts = null,
+        .set_layout_count = 1,
+        .p_set_layouts = descriptor_set_layout,
         .push_constant_range_count = 0,
         .p_push_constant_ranges = null,
     };
@@ -624,7 +693,7 @@ fn createGraphicsPipeline(
     render_pass: vk.RenderPass,
     pipeline_layout: vk.PipelineLayout,
 ) !vk.Pipeline {
-    const vert_code = try readFile(allo, "tri.vert.spv");
+    const vert_code = try readFile(allo, "tri1.vert.spv");
     defer allo.free(vert_code);
 
     const frag_code = try readFile(allo, "tri.frag.spv");
@@ -986,6 +1055,36 @@ fn findMemoryType(
     } else return error.FailedToFindSuitableMemoryType;
 }
 
+fn createUniformBuffers(
+    physical_device: vk.PhysicalDevice,
+    device: vk.Device,
+    p_uniform_buffers: *[MAX_FRAMES_IN_FLIGHT]vk.Buffer,
+    p_uniform_buffer_memories: *[MAX_FRAMES_IN_FLIGHT]vk.DeviceMemory,
+    p_uniform_buffer_maps: *[MAX_FRAMES_IN_FLIGHT]?*anyopaque,
+) !void {
+    const buffer_size = @sizeOf(UBO);
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        p_uniform_buffers[i] = try createBuffer(device, buffer_size, .init(.uniform_buffer_bit));
+        p_uniform_buffer_memories[i] = try createBufferMemory(
+            physical_device,
+            device,
+            p_uniform_buffers[i],
+            .initMany(&.{ .host_visible_bit, .host_coherent_bit }),
+        );
+        switch (vk.mapMemory(
+            device,
+            p_uniform_buffer_memories[i],
+            0,
+            buffer_size,
+            .initEmpty(),
+            &p_uniform_buffer_maps[i],
+        )) {
+            .success => {},
+            else => return error.FailedToMapMemory,
+        }
+    }
+}
+
 fn createCommandBuffers(
     device: vk.Device,
     command_pool: vk.CommandPool,
@@ -1108,6 +1207,8 @@ fn drawFrame(self: *Engine) !void {
         else => return error.FailedToAcquireSwapchainImage,
     }
 
+    self.updateUniformBuffer(self.current_frame);
+
     _ = vk.resetFences(
         self.device,
         1,
@@ -1207,4 +1308,25 @@ fn deinitSwapchain(self: *Engine) void {
     for (self.image_views) |image_view| //
         vk.destroyImageView(self.device, image_view, null);
     vk.destroySwapchainKHR(self.device, self.swapchain, null);
+}
+
+fn updateUniformBuffer(self: *Engine, current_image: u32) void {
+    const diff: f32 = self.chrono.diff();
+    std.debug.print("Diff: {}\n", .{diff});
+
+    var ubo = [_]UBO{
+        .{
+            .model = Matrix.ones(),
+            .view = Matrix.ones(),
+            .proj = Matrix.ones(),
+        },
+    };
+    ubo[0].proj.data[1][1] *= -1;
+
+    var gpu_data: [*]UBO = @ptrCast(@alignCast(self.uniform_buffer_maps[current_image]));
+    @memcpy(gpu_data[0..1], &ubo);
+}
+
+fn deg2rad(deg: f32) f32 {
+    return degreesToRadians(deg);
 }
