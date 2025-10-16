@@ -266,7 +266,8 @@ pub fn deinit(self: *Engine) void {
 pub fn run(self: *Engine) !void {
     while (!self.window.shouldClose()) {
         // poll events here
-        try self.drawFrame();
+        try self.drawFrame(); // draw frame
+        self.window.poll(); // update window here - not exiting properly
     }
 
     switch (vk.deviceWaitIdle(self.device)) {
