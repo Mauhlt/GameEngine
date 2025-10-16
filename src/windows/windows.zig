@@ -1,12 +1,14 @@
 // Single File That You Import
 // Windows Enums + EnumSets
+pub const Messages = @import("windows_enums.zig").Messages;
+pub const SW = @import("windows_enums.zig").SW;
+pub const ClassStyles = @import("windows_enums.zig").ClassStyles;
+pub const redraw = @import("windows_enums.zig").redraw;
+pub const WindowStyle = @import("windows_enums.zig").WindowStyle;
+pub const WindowStyles = @import("windows_enums.zig").WindowStyles;
 pub const overlapped_window = @import("windows_enums.zig").overlapped_window;
 pub const popup_window = @import("windows_enums.zig").popup_window;
 pub const tiled_window = @import("windows_enums.zig").tiled_window;
-pub const Messages = @import("windows_enums.zig").Messages;
-pub const SW = @import("windows_enums.zig").SW;
-const ClassStyles = @import("windows_enums.zig").ClassStyles;
-pub const redraw = @import("windows_enums.zig").redraw;
 pub const QS = @import("windows_enums.zig").QS;
 pub const qs_mouse = @import("windows_enums.zig").mouse;
 pub const qs_input = @import("windows_enums.zig").input;

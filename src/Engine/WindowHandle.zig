@@ -22,8 +22,10 @@ pub fn init(
     const icon = win.LoadIconW(.null, utf8ToUtf16("IDI_APPLICATION"));
     const cursor = win.LoadCursorW(.null, utf8ToUtf16("IDC_ARROW"));
     const wnd_proc = WndProc;
+
     var wc: win.WNDCLASSEXW = .{
-        .style = win.redraw.bits.mask,
+        // .size = @sizeOf(@This()),
+        .style = win.redraw.bits,
         .wnd_proc = wnd_proc,
         .cls_extra = 0,
         .wnd_extra = 0,
@@ -44,7 +46,7 @@ pub fn init(
         0,
         class_name,
         window_title,
-        win.overlapped_window.bits.mask,
+        win.overlapped_window.bits,
         100,
         100,
         @intCast(width),

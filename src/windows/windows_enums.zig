@@ -1,4 +1,5 @@
 const std = @import("std");
+const PES = @import("PackedEnumSet").PackedEnumSet;
 // Enums:
 // Color
 // ClassStyles
@@ -17,7 +18,7 @@ const ClassStyle = enum(u32) {
     v_redraw = 1,
     h_redraw = 2,
 };
-pub const ClassStyles = std.EnumSet(ClassStyle);
+pub const ClassStyles = PES(ClassStyle);
 pub const redraw = ClassStyles.initMany(&.{ .h_redraw, .v_redraw });
 
 pub const Messages = enum(u32) {
@@ -26,7 +27,6 @@ pub const Messages = enum(u32) {
     destroy = 0x0002,
     move = 0x0003,
     size = 0x0005,
-    sizing = 0x0214,
     enable = 0x000A,
     close = 0x0010,
     quit = 0x0012,
@@ -50,6 +50,7 @@ pub const Messages = enum(u32) {
     nc_calc_size = 0x0083,
     nc_activate = 0x0086,
     get_icon = 0x007F,
+    sizing = 0x0214,
     moving = 0x0216,
     enter_size_move = 0x0231,
     exit_size_move = 0x0232,
@@ -70,27 +71,27 @@ pub const SW = enum(i32) {
     restore = 9,
 };
 
-const WindowStyle = enum(u32) {
+pub const WindowStyle = enum(u32) {
     overlapped = 0,
-    maximize_box = 0x00_010_000,
-    minimize_box = 0x00_020_000,
-    thick_frame = 0x00_040_000,
-    sys_menu = 0x00_080_000,
-    h_scroll = 0x00_100_000,
-    v_scroll = 0x00_200_000,
-    dlg_frame = 0x00_400_000,
-    border = 0x00_800_000,
-    caption = 0x00_c00_000,
-    max = 0x01_000_000,
-    clip_children = 0x02_000_000,
-    clip_siblings = 0x04_000_000,
-    disabled = 0x08_000_000,
-    visible = 0x10_000_000,
-    min = 0x20_000_000,
-    child = 0x40_000_000,
-    pop_up = 0x80_000_000,
+    maximize_box = 0x00010000,
+    minimize_box = 0x00020000,
+    thick_frame = 0x00040000,
+    sys_menu = 0x00080000,
+    h_scroll = 0x00100000,
+    v_scroll = 0x00200000,
+    dlg_frame = 0x00400000,
+    border = 0x00800000,
+    caption = 0x00c00000,
+    max = 0x01000000,
+    clip_children = 0x02000000,
+    clip_siblings = 0x04000000,
+    disabled = 0x08000000,
+    visible = 0x10000000,
+    min = 0x20000000,
+    child = 0x40000000,
+    popup = 0x80000000,
 };
-pub const WindowStyles = std.EnumSet(WindowStyle);
+pub const WindowStyles = PES(WindowStyle);
 pub const overlapped_window: WindowStyles = .initMany(&.{
     .overlapped,
     .caption,
@@ -99,14 +100,11 @@ pub const overlapped_window: WindowStyles = .initMany(&.{
     .minimize_box,
     .maximize_box,
 });
-pub const popup_window: WindowStyles = .initMany(&.{ .popup, .border, .sysmenu });
-pub const tiled_window: WindowStyles = .initMany(&.{
-    .overlapped,
-    .caption,
+pub const tiled_window = overlapped_window;
+pub const popup_window: WindowStyles = .initMany(&.{
+    .popup,
+    .border,
     .sys_menu,
-    .thick_frame,
-    .minimize_box,
-    .maximize_box,
 });
 
 pub const SystemMetrics = enum(i32) {
@@ -239,7 +237,7 @@ pub const QS = enum(u32) {
     touch = 0x0800,
     pointer = 0x1000,
 };
-const QSS = std.EnumSet(QS);
+const QSS = PES(QS);
 pub const mouse = QSS.initMany(&.{ .mouse_move, .mouse_button });
 pub const input = QSS.initMany(&.{ .mouse_move, .mouse_button, .raw_input, .touch, .pointer });
 pub const all_events = QSS.initMany(&.{ .input, .post_message, .timer, .paint, .hotkey });
@@ -249,8 +247,8 @@ pub const PM = enum(u32) {
     no_remove = 0,
     remove = 1,
     no_yield = 2,
-    qs_input = @as(u32, input.bits.mask) << 16,
-    qs_post_message = @as(u32, QSS.initMany(&.{ .post_message, .hotkey, .timer }).bits.mask) << 16,
+    qs_input = @as(u32, input.bits) << 16,
+    qs_post_message = @as(u32, QSS.initMany(&.{ .post_message, .hotkey, .timer }).bits) << 16,
     qs_paint = @intFromEnum(QS.paint) << @as(u32, 16),
     qs_send_message = @intFromEnum(QS.send_message) << @as(u32, 16),
 };

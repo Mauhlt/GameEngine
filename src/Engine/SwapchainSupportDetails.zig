@@ -90,7 +90,7 @@ pub fn choosePresentMode(self: *const SwapchainSupportDetails) vk.PresentModeKHR
             .mailbox => return present_mode,
             else => {},
         }
-    } else return .fifo;
+    } else return .fifo; // only one guaranteed to be supported
 }
 
 pub fn chooseExtent(

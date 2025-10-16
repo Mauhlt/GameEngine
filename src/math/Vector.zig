@@ -1,43 +1,30 @@
-// TODO: Need to fix this file
-const Matrix = @import("Matrix.zig");
 const Vector = @This();
-
-data: [4]f32,
-
-pub fn init0(x: f32, y: f32, z: f32) Vector {
-    return .{ .data = [4]f32{ x, y, z, 0 } };
-}
-
-pub fn init1(x: f32, y: f32, z: f32) Vector {
-    return .{ .data = [4]f32{ x, y, z, 1 } };
-}
-
-pub fn swap1(A: Vector) Vector {
-    return .init1(A.data[0], A.data[1], A.data[2]);
-}
-
-pub fn swap0(A: Vector) Vector {
-    return .init0(A.data[0], A.data[1], A.data[2]);
-}
+data: [4]f32 = [_]f32{0} ** 4,
 
 pub fn ones() Vector {
-    return .init1(1, 1, 1);
+    return .{ .data = [_]f32{1} ** 4 };
 }
 
 pub fn zeros() Vector {
-    return .init0(0, 0, 0);
+    return .{ .data = [_]f32{0} ** 4 };
 }
 
-pub fn x_axis() Vector {
-    return .init0(1, 0, 0);
+pub fn x() Vector {
+    var data = [_]f32{0} ** 4;
+    data[0] = 1;
+    return .{ .data = data };
 }
 
-pub fn y_axis() Vector {
-    return .init0(0, 1, 0);
+pub fn y() Vector {
+    var data = [_]f32{0} ** 4;
+    data[1] = 1;
+    return .{ .data = data };
 }
 
-pub fn z_axis() Vector {
-    return .init0(0, 0, 1);
+pub fn z() Vector {
+    var data = [_]f32{0} ** 4;
+    data[2] = 1;
+    return .{ .data = data };
 }
 
 pub fn add(A: Vector, b: f32) Vector {
@@ -95,10 +82,10 @@ pub fn dot(A: Vector, B: Vector) f32 {
 }
 
 pub fn cross(A: Vector, B: Vector) Vector {
-    const x = A.data[1] * B.data[2] - A.data[2] * B.data[1];
-    const y = A.data[2] * B.data[0] - A.data[0] * B.data[2];
-    const z = A.data[0] * B.data[1] - A.data[1] * B.data[0];
-    return .init1(x, y, z);
+    const x_vec = A.data[1] * B.data[2] - A.data[2] * B.data[1];
+    const y_vec = A.data[2] * B.data[0] - A.data[0] * B.data[2];
+    const z_vec = A.data[0] * B.data[1] - A.data[1] * B.data[0];
+    return .{ .data = [4]f32{ x_vec, y_vec, z_vec, 1 } };
 }
 
 pub fn len(A: Vector) f32 {
@@ -110,7 +97,3 @@ pub fn norm(A: Vector) Vector {
         .data = @as([4]f32, @as(@Vector(4, f32), A.data) / @as(@Vector(4, f32), @splat(A.len()))),
     };
 }
-
-// pub fn lookAt(camera: Vector, up: Vector, right: Vector) Matrix {
-//
-// }

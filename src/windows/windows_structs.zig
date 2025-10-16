@@ -1,6 +1,7 @@
 const t = @import("windows_types.zig");
 const ClassStyles = @import("windows_enums.zig").ClassStyles;
 const WndProc = @import("windows_fns.zig").WndProc;
+const WindowStyles = @import("windows_enums.zig").WindowStyles;
 // Structs
 pub const WNDCLASSW = extern struct {
     style: u32 = 0,
