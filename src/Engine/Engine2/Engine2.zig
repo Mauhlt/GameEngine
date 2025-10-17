@@ -1335,12 +1335,12 @@ fn updateUniformBuffer(self: *Engine, current_image: u32) void {
     _ = diff;
     var ubo = [_]UBO{
         .{
-            .model = Matrix.ones(),
-            .view = Matrix.ones(),
-            .proj = Matrix.ones(),
+            .model = Matrix.identity(),
+            .view = Matrix.identity(),
+            .proj = Matrix.identity(),
         },
     };
-    // ubo[0].proj.data[1][1] *= -1;
+    ubo[0].proj.data[1][1] *= -1;
 
     var gpu_data: [*]UBO = @ptrCast(@alignCast(self.uniform_buffer_maps[current_image]));
     @memcpy(gpu_data[0..1], &ubo);

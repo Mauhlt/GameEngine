@@ -34,7 +34,7 @@ pub fn createVector(comptime n: usize) type {
                 3, 4 => {
                     data.data[2] = 1;
                 },
-                else => {},
+                else => unreachable,
                 _ => unreachable,
             }
             return data;
@@ -96,15 +96,15 @@ pub fn createVector(comptime n: usize) type {
 
         pub fn cross(A: Vector, B: Vector) Vector {
             switch (n) {
-                3 => {
-                    const x_vec = A.data[1] * B.data[2] - A.data[2] * B.data[1];
-                    const y_vec = A.data[2] * B.data[0] - A.data[0] * B.data[2];
-                    const z_vec = A.data[0] * B.data[1] - A.data[1] * B.data[0];
-                    return .{ .data = [3]f32{ x_vec, y_vec, z_vec } };
+                3, 4 => {
+                    var data = [_]f32{0} ** n;
+                    data[0] = A.data[1] * B.data[2] - A.data[2] * B.data[1];
+                    data[1] = A.data[2] * B.data[0] - A.data[0] * B.data[2];
+                    data[2] = A.data[0] * B.data[1] - A.data[1] * B.data[0];
+                    return .{ .data = data };
                 },
-                else => {
-                    return A;
-                },
+                else => unreachable,
+                _ => unreachable,
             }
         }
 
@@ -115,6 +115,12 @@ pub fn createVector(comptime n: usize) type {
         pub fn norm(A: Vector) Vector {
             return .{
                 .data = @as([n]f32, @as(@Vector(n, f32), A.data) / @as(@Vector(n, f32), @splat(A.len()))),
+            };
+        }
+
+        pub fn inv(A: Vector, data: f32) Vector {
+            return .{
+                .data = @as([n]f32, @as(@Vector(n, f32), @splat(data)) / @as(@Vector(n, f32), A.data)),
             };
         }
     };

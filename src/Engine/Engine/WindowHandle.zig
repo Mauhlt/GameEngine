@@ -76,7 +76,6 @@ pub fn deinit(self: *WindowHandle) void {
 
 pub fn show(self: *const WindowHandle) void {
     _ = win.ShowWindow(self.hwnd, .show);
-    // _ = win.UpdateWindow(self.hwnd); // uses gdi32
 }
 
 pub fn poll(self: *WindowHandle) void {
@@ -112,7 +111,6 @@ fn WndProc(
     wParam: win.WPARAM,
     lParam: win.LPARAM,
 ) callconv(.winapi) win.LRESULT {
-    std.debug.print("{}\n", .{@as(win.Messages, @enumFromInt(msg))});
     switch (@as(win.Messages, @enumFromInt(msg))) {
         .close => {
             _ = win.DestroyWindow(hwnd);
@@ -122,6 +120,7 @@ fn WndProc(
             _ = win.PostQuitMessage(0);
             return .null;
         },
+        // .changing => { // continue polling },
         else => {
             return win.DefWindowProcW(hwnd, msg, wParam, lParam);
         }
