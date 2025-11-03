@@ -98,5 +98,3 @@ pub fn chooseFormat(self: *const SSD) vk.SurfaceFormatKHR {
     std.debug.print("Chose Default Format\n", .{});
     return self.formats[0];
 }
-
-pub fn chooseDepthFormat() vk.Format {}

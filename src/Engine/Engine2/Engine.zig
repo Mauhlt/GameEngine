@@ -88,6 +88,8 @@ pub fn init(
 
     // self.pipeline_layout = try self.createPipelineLayout();
 
+    self.depth_format = try self.chooseDepthFormat();
+
     return self;
 }
 
@@ -722,4 +724,15 @@ fn endCommandBuffer(self: *Engine, i: usize) !void {
             break :blk error.FailedToEndCommandBuffer;
         },
     };
+}
+
+fn chooseDepthFormat(self: *const Engine) !vk.Format {
+    for ([_]vk.Format{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint }) |format| {
+        var props: vk.FormatProperties = undefined;
+        vk.getPhysicalDeviceFormatProperties(self.physical_device, format, &props);
+        if (props.optimal_tiling_features.contains(.depth_stencil_attachment_bit)) {
+            return format;
+        }
+    }
+    return error.FailedToFindSupportedFormat;
 }
