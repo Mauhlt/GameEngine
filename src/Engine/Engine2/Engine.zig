@@ -266,6 +266,30 @@ fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
     };
 }
 
+fn readFile(shader_filename: []const u8) ![]const u8 {
+    const allo = std.heap.page_allocator;
+    var exe_path_buf: [1024]u8 = undefined;
+    var exe_path = std.fs.selfExePath(&exe_path_buf) catch unreachable;
+    const idx = std.mem.indexOf(u8, exe_path, ".zig-cache").?;
+    const basepath = exe_path[0..idx];
+
+    const filepath = try std.fs.path.join(allo, &.{
+        basepath,
+        "src",
+        "Engine",
+        "Engine2",
+        "Shaders",
+        shader_filename,
+    });
+    defer allo.free(filepath);
+
+    var file = try std.fs.openFileAbsolute(filepath, .{ .mode = .read_only });
+    defer file.close();
+
+    const code = try file.readToEndAlloc(allo, 2048);
+    return code;
+}
+
 fn createShaderModule(self: *const Engine, code: []const u8) !vk.ShaderModule {
     const create_info = vk.ShaderModuleCreateInfo{
         .code_size = @truncate(code.len),
@@ -282,10 +306,117 @@ fn createShaderModule(self: *const Engine, code: []const u8) !vk.ShaderModule {
     };
 }
 
-fn createPipeline(self: *const Engine) !vk.Pipeline {
-    const create_info = vk.PipelineCreateInfoKHR{
-        .input_assembly = 
-};
+fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipeline {
+    const vert_code = try readFile();
+    defer allo.free(vert_code);
+
+    const frag_code = try readFile();
+    defer allo.free(frag_code);
+
+    const vert_sm = try self.createShaderModule(vert_code);
+    defer vk.destroyShaderModule(self.device, vert_sm, null);
+
+    const frag_sm = try self.createShaderModule(frag_code);
+    defer vk.destroyShaderModule(self.device, frag_sm, null);
+
+    const stages = [_]vk.PipelineShaderStageCreateInfo{
+        .{
+            .stage = .vertex_bit,
+            .p_name = "main",
+            .module = vert_sm,
+        },
+        .{
+            .stage = .fragment_bit,
+            .p_name = "main",
+            .module = frag_sm,
+        },
+    };
+
+    var bind_descs: [1]vk.VertexInputBindingDescription = undefined;
+    var attr_descs: [1]vk.VertexInputAttributeDescription = undefined;
+    Vertex.getBindingDescriptions(&bind_descs);
+    Vertex.getAttributeDescriptions(&attr_descs);
+
+    const input_assembly = vk.PipelineInputAssemblyStateCreateInfo{
+        .topology = .triangle_list,
+        .primitive_restart_enable = .false,
+    };
+
+    const viewport = vk.Viewport{
+        .x = 0,
+        .y = 0,
+        .width = self.extent.width,
+        .height = self.extent.height,
+        .min_depth = 0,
+        .max_depth = 1,
+    };
+
+    const scissor = vk.Rect2D{
+        .offset = [2]vk.Offset2D{ 0, 0 },
+        .extent = self.extent,
+    };
+
+    const viewport_info = vk.PipelineViewportStateCreateInfo{
+        .viewport_count = 1,
+        .p_viewports = &viewport,
+        .scissor_count = 1,
+        .p_scissors = &scissor,
+    };
+
+    const rasterization_info = vk.PipelineRasterizationStateCreateInfo{
+        .depth_clamp_enable = .false,
+        .rasterizer_discard_enable = .false,
+        .polygon_mode = .fill,
+        .line_width = 1,
+        .cull_mode = .none,
+        .front_face = .clockwise,
+        .depth_bias_enable = .false,
+        .depth_bias_constant_factor = 0,
+        .depth_bias_clamp = 0,
+        .depth_bias_slope_factor = 0,
+    };
+
+    const multisample_info = vk.PipelineMultisampleStateCreateInfo{
+        .sample_shading_enable = .false,
+        .rasterization_samples = .@"1_bit",
+        .min_sample_shading = 1,
+        .p_sample_mask = null,
+        .alpha_to_coverage_enable = .false,
+        .alpha_to_one_enable = .false,
+    };
+
+    const color_blend_attachment = vk.PipelineColorBlendAttachmentState{
+        .color_write_mask = .initMany(&.{ .r_bit, .g_bit, .b_bit, .a_bit }),
+        .blend_enable = .false,
+        .src_color_blend_factor = .one,
+        .dst_color_blend_factor = .zero,
+        .color_blend_op = .add,
+        .src_alpha_blend_factor = .one,
+        .dst_alpha_blend_factor = .zero,
+        .alpha_blend_op = .add,
+    };
+
+    const color_blend_info = vk.PipelineColorBlendStateCreateInfo{
+        .logic_op_enable = .false,
+        .logic_of = .copy,
+        .attachment_count = 1,
+        .p_attachments = &color_blend_attachment,
+        .blend_constants = [4]f32{ 0, 0, 0, 0 },
+    };
+
+    const depth_stencil_info = vk.PipelineDepthStencilStateCreateInfo{
+        .depth_test_enable = .true,
+        .depth_write_enable = .true,
+        .depth_compare_op = .less,
+        .depth_bounds_test_enable = .false,
+        .min_depth_bounds = 0,
+        .max_depth_bounds = 1,
+        .stencil_test_enable = .false,
+        .front = .{},
+        .back = .{},
+    };
+
+    const create_info = vk.PipelineCreateInfoKHR{};
 
     var pipeline: vk.Pipeline = .null;
     return switch (vk.createGraphicsPipelines(self.device, .null, 1, &create_info, null, &pipeline)) {
