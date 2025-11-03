@@ -30,6 +30,12 @@ image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
 render_pass: vk.RenderPass = .null,
 framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
 
+// commands
+command_pool: vk.CommandPool = .null,
+vertex_buffer: vk.Buffer = .null,
+vertex_buffer_memory: vk.DeviceMemory = .null,
+command_buffer: vk.CommandBuffer = .null,
+
 // pipeline
 pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
@@ -70,6 +76,7 @@ pub fn init(
     self.present_queue = try self.createQueue(qfis.present_family.?);
 
     // swapchain
+    self.swapchain = try self.createSwapchain();
 
     return self;
 }
@@ -248,6 +255,88 @@ fn createQueue(self: *const Engine, queue_family_index: u32) !vk.Queue {
     return queue;
 }
 
+fn createSwapchain(self: *const Engine) !vk.SwapchainKHR {
+    var swapchain: vk.SwapchainKHR = .null;
+    return switch (vk.createSwapchainKHR(self.device, &create_info, null, &swapchain)) {
+        .success => swapchain,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateSwapchain;
+        },
+    };
+}
+
+fn createSwapchainImages(self: *Engine) !void {
+    try switch (vk.getSwapchainImagesKHR(self.device, self.swapchain, &self.n_images, null)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToGetNumOfSwapchainImages;
+        },
+    };
+
+    try switch (vk.getSwapchainImagesKHR(self.device, self.swapchain, &self.n_images, &self.images)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToGetSwapchainImages;
+        },
+    };
+}
+
+fn createSwapchainImageView(self: *const Engine, i: usize) !vk.ImageView {
+    const create_info = vk.ImageViewCreateInfo{
+        .components = ,
+        .flags = ,
+        .format = self.swapchain_format,
+        .image = self.swapchain_images[i],
+        .subresource_range = .{},
+        .view_type = .@"2d",
+    };
+
+    var image_view: vk.ImageView = .null;
+    return switch (vk.createImageView(self.device, &create_info, null, &image_view)) {
+        .success => image_view,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateSwapchainImageView;
+        },
+    };
+}
+
+fn createRenderPass(self: *const Engine) !vk.RenderPass {
+    const create_info = vk.RenderPassCreateInfo{};
+
+    var render_pass: vk.RenderPass = .null;
+    return switch (vk.createRenderPass(self.device, &create_info, null, &render_pass)) {
+        .success => render_pass,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateRenderPass;
+        },
+    };
+}
+
+fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
+    const create_info = vk.FramebufferCreateInfo{
+        .attachment_count = 1,
+        .p_attachments = &self.image_views[i],
+        .width = self.swapchain_extent.width,
+        .height = self.swapchain_extent.height,
+        .render_pass = self.render_pass,
+        .layers = 1,
+    };
+
+    var framebuffer: vk.Framebuffer = .null;
+    return switch (vk.createFramebuffer(self.device, &create_info, null, &framebuffer)) {
+        .success => framebuffer,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateFramebuffer;
+        },
+    };
+}
+
 fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
     const create_info = vk.PipelineLayoutCreateInfoKHR{
         .set_layout_count = 0,
@@ -334,10 +423,10 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
 
     var bind_descs: [1]vk.VertexInputBindingDescription = undefined;
     var attr_descs: [1]vk.VertexInputAttributeDescription = undefined;
-    Vertex.getBindingDescriptions(&bind_descs);
-    Vertex.getAttributeDescriptions(&attr_descs);
+    Vertex.getBindingDescriptions(@ptrCast(&bind_descs));
+    Vertex.getAttributeDescriptions(@ptrCast(&attr_descs));
 
-    const input_assembly = vk.PipelineInputAssemblyStateCreateInfo{
+    const input_assembly_state = vk.PipelineInputAssemblyStateCreateInfo{
         .topology = .triangle_list,
         .primitive_restart_enable = .false,
     };
@@ -356,14 +445,14 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .extent = self.extent,
     };
 
-    const viewport_info = vk.PipelineViewportStateCreateInfo{
+    const viewport_state = vk.PipelineViewportStateCreateInfo{
         .viewport_count = 1,
         .p_viewports = &viewport,
         .scissor_count = 1,
         .p_scissors = &scissor,
     };
 
-    const rasterization_info = vk.PipelineRasterizationStateCreateInfo{
+    const rasterization_state = vk.PipelineRasterizationStateCreateInfo{
         .depth_clamp_enable = .false,
         .rasterizer_discard_enable = .false,
         .polygon_mode = .fill,
@@ -376,7 +465,7 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .depth_bias_slope_factor = 0,
     };
 
-    const multisample_info = vk.PipelineMultisampleStateCreateInfo{
+    const multisample_state = vk.PipelineMultisampleStateCreateInfo{
         .sample_shading_enable = .false,
         .rasterization_samples = .@"1_bit",
         .min_sample_shading = 1,
@@ -396,7 +485,7 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .alpha_blend_op = .add,
     };
 
-    const color_blend_info = vk.PipelineColorBlendStateCreateInfo{
+    const color_blend_state = vk.PipelineColorBlendStateCreateInfo{
         .logic_op_enable = .false,
         .logic_of = .copy,
         .attachment_count = 1,
@@ -404,7 +493,7 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .blend_constants = [4]f32{ 0, 0, 0, 0 },
     };
 
-    const depth_stencil_info = vk.PipelineDepthStencilStateCreateInfo{
+    const depth_stencil_state = vk.PipelineDepthStencilStateCreateInfo{
         .depth_test_enable = .true,
         .depth_write_enable = .true,
         .depth_compare_op = .less,
@@ -416,7 +505,23 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .back = .{},
     };
 
-    const create_info = vk.PipelineCreateInfoKHR{};
+    const create_info = vk.GraphicsPipelineCreateInfo{
+        .stage_count = @truncate(stages.len),
+        .p_stages = &stages,
+        .p_input_assembly_state = &input_assembly_state,
+        .p_viewport_state = &viewport_state,
+        .p_rasterization_state = &rasterization_state,
+        .p_multisample_state = &multisample_state,
+        .p_color_blend_state = &color_blend_state,
+        .p_depth_stencil_state = &depth_stencil_state,
+
+        .render_pass = self.render_pass,
+        .layout = self.pipeline_layout,
+        .subpass = 0,
+
+        .base_pipeline_handle = .null,
+        .base_pipeline_index = -1,
+    };
 
     var pipeline: vk.Pipeline = .null;
     return switch (vk.createGraphicsPipelines(self.device, .null, 1, &create_info, null, &pipeline)) {
