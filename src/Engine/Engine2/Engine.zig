@@ -22,13 +22,19 @@ present_queue: vk.Queue = .null,
 
 // swapchain
 swapchain: vk.SwapchainKHR = .null,
-format: vk.Format,
-extent: vk.Extent2D,
-n_images: u32 = 0,
-images: [3]vk.Image = [_]vk.Image{.null} ** 3,
-image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
-render_pass: vk.RenderPass = .null,
-framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
+swapchain_format: vk.Format = .b8g8r8a8_unorm,
+swapchain_extent: vk.Extent2D,
+swpachain_n_images: u32 = 0,
+swapchain_images: [3]vk.Image = [_]vk.Image{.null} ** 3,
+swapchain_image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
+swapchain_render_pass: vk.RenderPass = .null,
+swapchain_framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
+
+// depth
+depth_format: vk.Format = .d32_sfloat,
+depth_images: [3]vk.Image = [_]vk.Image{.null} ** 3,
+depth_image_memories: [3]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** 3,
+depth_image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
 
 // commands
 command_pool: vk.CommandPool = .null,
@@ -363,11 +369,6 @@ fn findSupportedFormat(
         }
     }
     return error.FailedToFindSupportedFormat;
-}
-
-fn findDepthFormat(self: *const Engine) vk.Format {
-    const formats = [_]vk.Format{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint };
-    return self.findSupportedFormat(&formats, .init(.optimal), .depth_stencil_attachment_bit);
 }
 
 fn createRenderPass(self: *const Engine) !vk.RenderPass {

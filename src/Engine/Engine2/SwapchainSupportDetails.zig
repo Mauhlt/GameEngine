@@ -62,22 +62,6 @@ pub fn init(surface: vk.SurfaceKHR, physical_device: vk.PhysicalDevice) SSD {
     };
 }
 
-pub fn chooseFormat(self: *const SSD) vk.SurfaceFormatKHR {
-    for (self.formats[0..self.n_formats]) |surface_format| {
-        switch (surface_format.color_space) {
-            .srgb_nonlinear => {
-                switch (surface_format.format) {
-                    .b8g8r8a8_unorm => return surface_format,
-                    else => continue,
-                }
-            },
-            else => continue,
-        }
-    }
-    std.debug.print("Chose Default Format\n", .{});
-    return self.formats[0];
-}
-
 pub fn choosePresentMode(self: *const SSD) vk.PresentModeKHR {
     for (self.present_modes[0..self.n_present_modes]) |present_mode| {
         if (present_mode == .mailbox) return present_mode;
@@ -97,6 +81,22 @@ pub fn chooseExtent(self: *const SSD, window: *const Window) vk.Extent2D {
         .width = @max(self.capabilities.min_image_extent.width, @min(self.capabilities.max_image_extent.width, win_size.w)),
         .height = @max(self.capabilities.min_image_extent.height, @min(self.capabilities.max_image_extent.height, win_size.h)),
     };
+}
+
+pub fn chooseFormat(self: *const SSD) vk.SurfaceFormatKHR {
+    for (self.formats[0..self.n_formats]) |surface_format| {
+        switch (surface_format.color_space) {
+            .srgb_nonlinear => {
+                switch (surface_format.format) {
+                    .b8g8r8a8_unorm => return surface_format,
+                    else => continue,
+                }
+            },
+            else => continue,
+        }
+    }
+    std.debug.print("Chose Default Format\n", .{});
+    return self.formats[0];
 }
 
 pub fn chooseDepthFormat() vk.Format {}
