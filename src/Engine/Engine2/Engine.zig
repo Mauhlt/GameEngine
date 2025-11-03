@@ -77,13 +77,20 @@ pub fn init(
 
     // swapchain
     self.swapchain = try self.createSwapchain();
+    try self.createSwapchainImages();
+    self.render_pass = try self.createRenderPass();
+
+    // self.pipeline_layout = try self.createPipelineLayout();
 
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
-    vk.destroyPipeline(self.device, self.pipeline, null);
-    vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+    // vk.destroyPipeline(self.device, self.pipeline, null);
+    // vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+
+    vk.destroyRenderPass(self.device, self.render_pass, null);
+    vk.destroySwapchainKHR(self.device, self.swapchain, null);
 
     // device
     vk.destroyDevice(self.device, null);
@@ -256,6 +263,42 @@ fn createQueue(self: *const Engine, queue_family_index: u32) !vk.Queue {
 }
 
 fn createSwapchain(self: *const Engine) !vk.SwapchainKHR {
+    const ssd = try SSD.init();
+    const surface_format = ssd.chooseSurfaceFormat();
+    const present_mode = ssd.choosePresentMode();
+    const extent = ssd.chooseExtent(&self.window);
+
+    var image_count = ssd.capabilities.min_image_count + 1;
+    if (ssd.capabilities.max_image_count > 0 and image_count > ssd.capabilities.max_image_count) {
+        image_count = ssd.capabilities.max_image_count;
+    }
+
+    const qfi = try QFI.init(self.surface, self.physical_device);
+    const indices = [_]u32{ qfi.graphics_family.?, qfi.present_family.? };
+
+    const create_info = vk.SwapchainCreateInfoKHR{
+        .surface = self.surface,
+
+        .min_image_count = image_count,
+        .image_format = surface_format.format,
+        .image_color_space = surface_format.color_space,
+        .image_extent = extent,
+        .image_array_layers = 1,
+        .image_usage = .init(.color_attachment_bit),
+
+        .image_sharing_mode = if (!qfi.isSameFamily()) .concurrent else .exclusive,
+        .queue_family_index_count = if (!qfi.isSameFamily()) 2 else 1,
+        .p_queue_family_indices = &indices,
+
+        .pre_transform = ssd.capabilities.current_transform,
+        .composite_alpha = .opaque_bit,
+
+        .present_mode = present_mode,
+        .clipped = .true,
+
+        .old_swapchain = .null,
+    };
+
     var swapchain: vk.SwapchainKHR = .null;
     return switch (vk.createSwapchainKHR(self.device, &create_info, null, &swapchain)) {
         .success => swapchain,
@@ -286,12 +329,12 @@ fn createSwapchainImages(self: *Engine) !void {
 
 fn createSwapchainImageView(self: *const Engine, i: usize) !vk.ImageView {
     const create_info = vk.ImageViewCreateInfo{
-        .components = ,
-        .flags = ,
+        // .components = ,
+        // .flags = ,
         .format = self.swapchain_format,
         .image = self.swapchain_images[i],
-        .subresource_range = .{},
-        .view_type = .@"2d",
+        // .subresource_range = .{},
+        // .view_type = .@"2d",
     };
 
     var image_view: vk.ImageView = .null;
@@ -304,8 +347,88 @@ fn createSwapchainImageView(self: *const Engine, i: usize) !vk.ImageView {
     };
 }
 
+fn findSupportedFormat(
+    self: *const Engine,
+    candidates: []const vk.Format,
+    tiling: vk.ImageTilingFlags,
+    feature: vk.FormatFeatureFlagBits,
+) !vk.Format {
+    for (candidates) |candidate| {
+        var props: vk.FormatProperties = undefined;
+        vk.getPhysicalDeviceFormatProperties(self.physical_device, candidate, &props);
+        if (tiling.contains(.linear) and (props.linear_tiling_features.contains(feature))) {
+            return candidate;
+        } else if (tiling.contains(.optimal) and props.optimal_tiling_features.contains(feature)) {
+            return candidate;
+        }
+    }
+    return error.FailedToFindSupportedFormat;
+}
+
+fn findDepthFormat(self: *const Engine) vk.Format {
+    const formats = [_]vk.Format{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint };
+    return self.findSupportedFormat(&formats, .init(.optimal), .depth_stencil_attachment_bit);
+}
+
 fn createRenderPass(self: *const Engine) !vk.RenderPass {
-    const create_info = vk.RenderPassCreateInfo{};
+    const depth_attachment = vk.AttachmentDescription{
+        .format = findDepthFormat(), // probably should be stored instead
+        .samples = .@"1_bit",
+        .load_op = .clear,
+        .store_op = .dont_care,
+        .stencil_load_op = .dont_care,
+        .stencil_store_op = .dont_care,
+        .initial_layout = .undefined,
+        .final_layout = .stencil_attachment_optimal,
+    };
+
+    const depth_attachment_ref = vk.AttachmentReference{
+        .attachment = 1,
+        .layout = .depth_stencil_attachment_optimal,
+    };
+
+    const color_attachment = vk.AttachmentDescription{
+        .format = self.swapchain_format,
+        .samples = .@"1_bit",
+        .load_op = .clear,
+        .store_op = .store,
+        .stencil_load_op = .dont_care,
+        .stencil_store_op = .dont_care,
+        .initial_layout = .undefined,
+        .final_layout = .present_src_khr,
+    };
+
+    const color_attachment_ref = vk.AttachmentReference{
+        .attachment = 0,
+        .layout = .color_attachment_optimal,
+    };
+
+    const subpass = vk.SubpassDescription{
+        .pipeline_bind_point = .graphics,
+        .color_attachment_count = 1,
+        .p_color_attachments = &color_attachment_ref,
+        .p_depth_stencil_attachment = &depth_attachment_ref,
+    };
+
+    const dependency = vk.SubpassDependency{
+        .dst_subpass = 0,
+        .dst_access_mask = .color_attachment_write_bit,
+        .dst_stage_mask = .color_attachment_output_bit,
+        .src_subpass = vk.SubpassExternal,
+        .src_access_mask = .initEmpty(),
+        .src_stage_mask = .color_attachment_output_bit,
+    };
+
+    const attachments = [_]vk.AttachmentDescription{ color_attachment, depth_attachment };
+
+    const create_info = vk.RenderPassCreateInfo{
+        .attachment_count = @truncate(attachments.len),
+        .p_attachments = &attachments,
+        .subpass_count = 1,
+        .p_subpasses = &subpass,
+        .dependency_count = 1,
+        .p_dependencies = &dependency,
+    };
 
     var render_pass: vk.RenderPass = .null;
     return switch (vk.createRenderPass(self.device, &create_info, null, &render_pass)) {
