@@ -38,8 +38,8 @@ pub const Messages = enum(u32) {
     get_min_max_info = 0x0024,
     query_drag_icon = 0x0037,
     compacting = 0x0041,
-    window_pos_changing = 0x0046,
-    window_pos_changed = 0x0047,
+    window_pos_changing = 0x0046, // window pos changing - this one
+    window_pos_changed = 0x0047, // window pos changed - this one
     input_lang_request_change = 0x0050,
     input_lang_change = 0x0051,
     user_changed = 0x0054,
@@ -50,12 +50,23 @@ pub const Messages = enum(u32) {
     nc_calc_size = 0x0083,
     nc_activate = 0x0086,
     get_icon = 0x007F,
-    sizing = 0x0214,
-    moving = 0x0216,
+    sizing = 0x0214, // windows sizing = change in size of window
+    moving = 0x0216, // window is movenig - this one
     enter_size_move = 0x0231,
     exit_size_move = 0x0232,
     theme_changed = 0x031A,
     _,
+};
+
+pub const WindowMessageSizing = enum(u32) {
+    left = 1,
+    right = 2,
+    top = 3,
+    top_left = 4,
+    top_right = 5,
+    bottom_edge = 6,
+    bottom_left = 7,
+    bottom_right = 8,
 };
 
 pub const SW = enum(i32) {

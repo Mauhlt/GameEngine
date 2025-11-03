@@ -1,5 +1,6 @@
 const std = @import("std");
-const Engine = @import("Engine\\Engine2.zig");
+// const Engine = @import("Engine/Engine1/Engine.zig");
+const Engine = @import("Engine/Engine2/Engine.zig");
 
 pub fn main() !void {
     // Allocator
@@ -11,7 +12,6 @@ pub fn main() !void {
         allo,
         "HokaAndHoshi",
         "Hoka And Hoshi",
-        "EurekaEngine",
         .{
             .width = 800,
             .height = 600,
@@ -21,5 +21,5 @@ pub fn main() !void {
 
     // var i: usize = 0;
     // while (i < 100_000_000) : (i += 1) {}
-    try engine.run();
+    // try engine.run();
 }

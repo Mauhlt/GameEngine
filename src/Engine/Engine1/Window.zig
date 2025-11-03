@@ -1,7 +1,7 @@
 const std = @import("std");
-const win = @import("..\\windows\\windows.zig");
+const win = @import("../../windows/windows.zig");
 const utf8ToUtf16 = std.unicode.utf8ToUtf16LeStringLiteral;
-const WindowHandle = @This();
+const Window = @This();
 
 instance: win.HINSTANCE = .null,
 title: [*:0]const u16,
@@ -13,7 +13,7 @@ pub fn init(
     comptime title: []const u8,
     width: u32,
     height: u32,
-) !WindowHandle {
+) !Window {
     const instance = win.GetModuleHandleW(null);
     // wide strings
     const class_name = utf8ToUtf16(name);
@@ -67,25 +67,25 @@ pub fn init(
     };
 }
 
-pub fn deinit(self: *WindowHandle) void {
+pub fn deinit(self: *Window) void {
     _ = win.UnregisterClassW(
         self.title,
         self.instance,
     );
 }
 
-pub fn show(self: *const WindowHandle) void {
+pub fn show(self: *const Window) void {
     _ = win.ShowWindow(self.hwnd, .show);
 }
 
-pub fn poll(self: *WindowHandle) void {
+pub fn poll(self: *Window) void {
     var msg: win.MSG = undefined;
     if (win.GetMessageW(&msg, self.hwnd, 0, 0) == 0) return;
     _ = win.TranslateMessage(&msg);
     _ = win.DispatchMessageW(&msg);
 }
 
-pub fn clientSize(self: *const WindowHandle) struct { w: i32, h: i32 } {
+pub fn clientSize(self: *const Window) struct { w: i32, h: i32 } {
     // drawable space
     var rect: win.RECT = undefined;
     _ = win.GetClientRect(self.hwnd, &rect);
@@ -95,7 +95,7 @@ pub fn clientSize(self: *const WindowHandle) struct { w: i32, h: i32 } {
     };
 }
 
-pub fn windowSize(self: *const WindowHandle) struct { w: i32, h: i32 } {
+pub fn windowSize(self: *const Window) struct { w: i32, h: i32 } {
     // full window size
     var rect: win.RECT = undefined;
     _ = win.GetWindowRect(self.hwnd, &rect);
@@ -127,7 +127,7 @@ fn WndProc(
     }
 }
 
-pub fn shouldClose(self: *WindowHandle) bool {
+pub fn shouldClose(self: *Window) bool {
     _ = win.PeekMessageW(&self.msg, .null, 0, 0, .remove);
     return switch (@as(win.Messages, @enumFromInt(self.msg.msg))) {
         .quit => true,

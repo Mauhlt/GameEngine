@@ -33,8 +33,8 @@
     // internet connectivity.
     .dependencies = .{
         .PackedEnumSet = .{
-            .url = "git+https://github.com/Mauhlt/PackedEnumSet.git#963c6f2cc4c405517925937e2edfd39db693a349",
-            .hash = "PackedEnumSet-0.0.0-oZSdHnkXAAAxc2XHJQuz8w_8HPEX5IvLufEE1_MuHzxI",
+            .url = "git+https://github.com/Mauhlt/PackedEnumSet#65087c8f3d6f961888b52f395c15e4baaaefdd07",
+            .hash = "PackedEnumSet-0.0.0-oZSdHqEXAABMzt3RMe8DZ9ZrHqEI20fvtiT-AN5PGR-j",
         },
     },
     .paths = .{

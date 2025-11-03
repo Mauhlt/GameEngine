@@ -55,15 +55,24 @@ pub fn build(b: *std.Build) !void {
     var exe_path = std.fs.selfExePath(&exe_path_buf) catch unreachable;
     const idx = std.mem.indexOf(u8, exe_path, ".zig-cache").?;
     const basepath = exe_path[0..idx];
-    const path = std.fs.path.join(allo, &.{ basepath, "src", "Shaders" }) catch unreachable;
-    defer allo.free(path);
-    var dir = std.fs.openDirAbsolute(path, .{ .iterate = true }) catch unreachable;
-    defer dir.close();
-    var it = dir.iterate();
-    while (try it.next()) |item| {
-        switch (item.kind) {
-            .file => if (isShader(item.name)) try compileShader(item.name),
-            else => continue,
+
+    for ([_][]const u8{ "Engine1", "Engine2" }) |engine_version| {
+        const path = std.fs.path.join(allo, &.{
+            basepath,
+            "src",
+            "Engine",
+            engine_version,
+            "Shaders",
+        }) catch unreachable;
+        defer allo.free(path);
+        var dir = std.fs.openDirAbsolute(path, .{ .iterate = true }) catch unreachable;
+        defer dir.close();
+        var it = dir.iterate();
+        while (try it.next()) |item| {
+            switch (item.kind) {
+                .file => if (isShader(item.name)) try compileShader(path, item.name),
+                else => continue,
+            }
         }
     }
 
@@ -98,7 +107,7 @@ fn isShader(name: []const u8) bool {
     } else return false;
 }
 
-fn compileShader(name: []const u8) !void {
+fn compileShader(shader_dir: []const u8, name: []const u8) !void {
     const allo = std.heap.page_allocator;
     // base
     var buf: [1024]u8 = undefined;
@@ -108,9 +117,6 @@ fn compileShader(name: []const u8) !void {
     // glslc
     const glslc = try std.fs.path.join(allo, &.{ basepath, "Vulkan", "Bin", "glslc.exe" });
     defer allo.free(glslc);
-    // shader dir
-    const shader_dir = try std.fs.path.join(allo, &.{ basepath, "src", "Shaders" });
-    defer allo.free(shader_dir);
     // in file
     const in_file = try std.fs.path.join(allo, &.{ shader_dir, name });
     defer allo.free(in_file);
