@@ -40,6 +40,8 @@ depth_image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
 command_pool: vk.CommandPool = .null,
 vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
+index_buffer: vk.Buffer = .null,
+index_buffer_memory: vk.DeviceMemory = .null,
 command_buffer: vk.CommandBuffer = .null,
 
 // pipeline
@@ -47,9 +49,9 @@ pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 
 // sync objects
-image_available_semaphores: [3]vk.Semaphore = [_]vk.Semaphore{.null} ** 3,
-render_finished_semaphores: [3]vk.Semaphore = [_]vk.Semaphore{.null} ** 3,
-in_flight_fences: [3]vk.Fence = [_]vk.Fence{.null} ** 3,
+image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
+render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
+in_flight_fences: [MAX_FRAMES_IN_FLIGHT]vk.Fence = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT,
 
 // constants
 current_frame: u32 = 0,
@@ -85,18 +87,58 @@ pub fn init(
     self.swapchain = try self.createSwapchain();
     try self.createSwapchainImages();
     self.render_pass = try self.createRenderPass();
+    const ssd = try SSD.init(self.surface, self.physical_device);
+    self.swapchain_extent = try ssd.chooseExtent(&self.window);
+    self.swapchain_format = try ssd.chooseSurfaceFormat().format;
+    for (0..self.n_images) |i| {
+        self.swapchain_image_views[i] = try self.createSwapchainImageView(i);
+        self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
+    }
+
+    // self.depth_format = try self.chooseDepthFormat();
+    // for (0..self.n_images) |i| {
+    //     self.depth_images[i] = try self.createImage();
+    //     self.depth_image_memories[i] = try self.createImageMemory(self.depth_images[i], props);
+    //     self.depth_image_views[i] = try self.createImageView(i);
+    // }
 
     // self.pipeline_layout = try self.createPipelineLayout();
-
-    self.depth_format = try self.chooseDepthFormat();
+    // self.pipeline = try self.createPipeline();
 
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
+    // sync objects
+    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+    //     vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
+    //     vk.destroySemaphore(self.device, self.render_finished_semaphores[i], null);
+    //     vk.destroyFence(self.device, self.in_flight_fences[i], null);
+    // }
+
+    // pipeline
     // vk.destroyPipeline(self.device, self.pipeline, null);
     // vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
 
+    // commands
+    // vk.destroyBuffer(self.device, self.index_buffer, null);
+    // vk.freeMemory(self.device, self.index_buffer_memory, null);
+    // vk.destroyBuffer(self.device, self.vertex_buffers[i], null);
+    // vk.freeMemory(self.device, self.vertex_buffer_memory, null);
+    // vk.destroyCommandPool(self.device, self.command_pool, null);
+
+    // depth
+    for (0..self.n_images) |i| {
+        vk.destroyImage(self.device, self.depth_images[i], null);
+        vk.freeMemory(self.device, self.depth_image_memories[i], null);
+        vk.destroyImageView(self.device, self.depth_image_views[i], null);
+    }
+
+    // swapchain
+    for (0..self.n_images) |i| {
+        vk.destroyFramebuffer(self.device, self.swapchain_framebuffers[i], null);
+        vk.destroyImageView(self.device, self.swapchain_image_views[i], null);
+    }
     vk.destroyRenderPass(self.device, self.render_pass, null);
     vk.destroySwapchainKHR(self.device, self.swapchain, null);
 
@@ -463,6 +505,17 @@ fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
     };
 }
 
+fn chooseDepthFormat(self: *const Engine) !vk.Format {
+    for ([_]vk.Format{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint }) |format| {
+        var props: vk.FormatProperties = undefined;
+        vk.getPhysicalDeviceFormatProperties(self.physical_device, format, &props);
+        if (props.optimal_tiling_features.contains(.depth_stencil_attachment_bit)) {
+            return format;
+        }
+    }
+    return error.FailedToFindSupportedFormat;
+}
+
 fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
     const create_info = vk.PipelineLayoutCreateInfoKHR{
         .set_layout_count = 0,
@@ -659,6 +712,71 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
     };
 }
 
+fn createBuffer(
+    self: *const Engine,
+    size: vk.DeviceSize,
+    usage: vk.BUfferUsageFlags,
+) !vk.Buffer {
+    const create_info = vk.BufferCreateInfo{
+        .size = size,
+        .usage = usage,
+        .sharing_mode = .exclusive,
+    };
+
+    var buffer: vk.Buffer = .null;
+    return switch (vk.createBuffer(self.device, &create_info, null, &buffer)) {
+        .success => buffer,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateBuffer;
+        },
+    };
+}
+
+fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropertyFlags) !u32 {
+    var mem_props: vk.PhysicalDeviceMemoryProperties = undefined;
+    vk.getPhysicalDeviceMemoryProperties(self.physical_device, &mem_props);
+    for (0..mem_props.memory_type_count) |i| {
+        if (((type_filter and @as(u32, 1 << @truncate(i))) > 0) and mem_props.memory_types[i].property_flags.contains(props)) {
+            return @truncate(i);
+        }
+    }
+    return error.FailedToFindSuitableMemoryType;
+}
+
+fn createBufferMemory(
+    self: *const Engine,
+    buffer: vk.Buffer,
+    props: vk.MemoryPropertyFlags,
+) !vk.DeviceMemory {
+    var mem_reqs: vk.MemoryRequirements = undefined;
+    vk.getBufferMemoryRequirements(self.device, buffer, &mem_reqs);
+
+    const alloc_info = vk.MemoryAllocateInfo{
+        .allocation_size = mem_reqs.size,
+        .memory_type_index = try findMemoryType(mem_reqs.memory_type_bits, props),
+    };
+
+    var memory: vk.DeviceMemory = .null;
+    return switch (vk.allocateMemory(self.device, &alloc_info, null, &memory)) {
+        .success => memory,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateBufferMemory;
+        },
+    };
+}
+
+fn bindBufferMemory(self: *const Engine, buffer: vk.Buffer, memory: vk.DeviceMemory, offset: u64) !void {
+    try switch (vk.bindBufferMemory(self.device, buffer, memory, offset)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToBindBufferMemory;
+        },
+    };
+}
+
 fn allocCommandBuffers(self: *Engine) !void {
     const alloc_info = vk.CommandBufferAllocateInfo{
         .command_buffer_count = self.n_images,
@@ -726,13 +844,42 @@ fn endCommandBuffer(self: *Engine, i: usize) !void {
     };
 }
 
-fn chooseDepthFormat(self: *const Engine) !vk.Format {
-    for ([_]vk.Format{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint }) |format| {
-        var props: vk.FormatProperties = undefined;
-        vk.getPhysicalDeviceFormatProperties(self.physical_device, format, &props);
-        if (props.optimal_tiling_features.contains(.depth_stencil_attachment_bit)) {
-            return format;
-        }
-    }
-    return error.FailedToFindSupportedFormat;
+fn createImage(self: *const Engine, image: vk.Image) !void {
+    const create_info = vk.ImageCreateInfo{};
+    try switch (vk.createImage(self.device, &create_info, null, &image)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateImage;
+        },
+    };
+}
+
+fn createImageMemory(self: *const Engine, image: vk.Image, props: vk.MemoryPropertyFlags) !vk.DeviceMemory {
+    var mem_reqs: vk.MemoryRequirements = undefined;
+    vk.getImageMemoryRequirements(self.device, image, &mem_reqs);
+
+    const alloc_info = vk.MemoryAllocateInfo{
+        .allocation_size = mem_reqs.size,
+        .memory_type_index = self.findMemoryType(mem_reqs.memory_type_bits, props),
+    };
+
+    var memory: vk.DeviceMemory = .null;
+    return switch (vk.allocateMemory(self.device, &alloc_info, null, &memory)) {
+        .success => memory,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToAllocateMemory;
+        },
+    };
+}
+
+fn bindImageMemory(self: *const Engine, image: vk.Image, memory: vk.DeviceMemory) !void {
+    try switch (vk.bindImageMemory(self.device, image, memory, 0)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToBindImageMemory;
+        },
+    };
 }
