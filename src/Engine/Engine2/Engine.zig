@@ -6,6 +6,11 @@ const Vertex = @import("Vertex.zig");
 const Window = @import("Window.zig");
 const vk = @import("../../vulkan/vulkan.zig");
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
+const vertices = [_]Vertex{
+    .{ .pos = [2]f32{ 0, -0.5 } },
+    .{ .pos = [2]f32{ 0.5, 0.5 } },
+    .{ .pos = [2]f32{ -0.5, 0.5 } },
+};
 const Engine = @This();
 
 // models
@@ -101,6 +106,11 @@ pub fn init(
     //     self.depth_image_memories[i] = try self.createImageMemory(self.depth_images[i], props);
     //     self.depth_image_views[i] = try self.createImageView(i);
     // }
+
+    self.vertex_buffer = try self.createBuffer();
+    self.vertex_buffer_memory = try self.createBufferMemory(
+        self.vertex_buffer,
+    );
 
     // self.pipeline_layout = try self.createPipelineLayout();
     // self.pipeline = try self.createPipeline();
@@ -715,7 +725,7 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
 fn createBuffer(
     self: *const Engine,
     size: vk.DeviceSize,
-    usage: vk.BUfferUsageFlags,
+    usage: vk.BufferUsageFlags,
 ) !vk.Buffer {
     const create_info = vk.BufferCreateInfo{
         .size = size,
