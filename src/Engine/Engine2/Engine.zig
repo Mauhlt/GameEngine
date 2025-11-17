@@ -109,14 +109,26 @@ pub fn init(
     // commands
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
+    for (0..self.swapchain_n_images) |i| {
+        self.beginCommandBuffer(i);
+        self.beginRenderPass(i);
+
+        vk.cmdBindPipeline(self.command_buffers[i], .graphics, self.graphics_pipeline);
+        self.bindVertexBuffer(self.command_buffers[i]);
+
+        self.endRenderPass(i);
+        self.endCommandBuffer(i);
+    }
 
     //// model
     const size: u64 = vertices.len * @sizeOf(Vertex);
-    self.vertex_buffer = try self.createBuffer(size, .init(.vertex_bit));
-    self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer);
+    self.vertex_buffer = try self.createBuffer(size, .init(.vertex_buffer_bit));
+    self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer, .initMany(&.{ .host_visible_bit, .host_coherent_bit }));
     try self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
+
     // self.index_buffer = try self.createBuffer(size, .init(.vertex_bit));
     // self.index_buffer_memory = try self.createBufferMemory(self.index_buffer);
+    // try self.bindBufferMemory(self.index_buffer, self.index_buffer_memory, 0);
 
     // pipeline
     self.pipeline_layout = try self.createPipelineLayout();
@@ -882,7 +894,7 @@ fn createBufferMemory(
 
     const alloc_info = vk.MemoryAllocateInfo{
         .allocation_size = mem_reqs.size,
-        .memory_type_index = try findMemoryType(mem_reqs.memory_type_bits, props),
+        .memory_type_index = try self.findMemoryType(mem_reqs.memory_type_bits, props),
     };
 
     var memory: vk.DeviceMemory = .null;
@@ -961,6 +973,7 @@ fn beginRenderPass(self: *const Engine, i: usize) !void {
         .clear_value_count = @truncate(clear_values.len),
         .p_clear_values = &clear_values,
     };
+
     try switch (vk.cmdBeginRenderPass(self.command_buffers[i], &rp_begin_info, .@"inline")) {
         .success => {},
         else => error.FailedToBeginRenderPass,
@@ -985,4 +998,14 @@ fn endCommandBuffer(self: *Engine, i: usize) !void {
             break :blk error.FailedToEndCommandBuffer;
         },
     };
+}
+
+fn bindVertexBuffer(self: *const Engine, command_buffer: vk.CommandBuffer) void {
+    const buffers = [_]vk.Buffer{self.vertex_buffer};
+    const offsets = [_]vk.DeviceSize{0};
+    vk.cmdBindVertexBuffers(command_buffer, 0, 1, &buffers, &offsets);
+}
+
+fn draw(command_buffer: vk.CommandBuffer, n_vertices: u32) void {
+    vk.cmdDraw(command_buffer, n_vertices, 1, 0, 0);
 }
