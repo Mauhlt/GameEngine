@@ -30,14 +30,16 @@ swapchain_extent: vk.Extent2D = .{ .width = 640, .height = 480 },
 swapchain_n_images: u32 = 0,
 swapchain_images: [3]vk.Image = [_]vk.Image{.null} ** 3,
 swapchain_image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
-swapchain_render_pass: vk.RenderPass = .null,
-swapchain_framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
 
 // depth
 depth_format: vk.Format = .d32_sfloat,
 depth_images: [3]vk.Image = [_]vk.Image{.null} ** 3,
 depth_image_memories: [3]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** 3,
 depth_image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
+
+// renders
+render_pass: vk.RenderPass = .null,
+framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
 
 // commands
 command_pool: vk.CommandPool = .null,
@@ -85,7 +87,6 @@ pub fn init(
     // swapchain
     self.swapchain = try self.createSwapchain();
     try self.createSwapchainImages();
-    self.swapchain_render_pass = try self.createRenderPass();
     const ssd = try SSD.init(self.surface, self.physical_device);
     self.swapchain_extent = ssd.chooseExtent(&self.window);
     self.swapchain_format = ssd.chooseSurfaceFormat().format;
@@ -94,10 +95,13 @@ pub fn init(
     // depth
     self.depth_format = try self.findDepthFormat();
     for (0..self.swapchain_n_images) |i| {
-        self.depth_images[i] = try self.createImage();
+        self.depth_images[i] = try self.createDepthImage();
+        self.depth_image_memories[i] = try self.allocDepthImage(i, .init(.device_local_bit));
+        self.depth_image_views[i] = try self.createDepthImageView(i);
     }
 
-    self.swapchain_framebuffers[0] = try self.createSwapchainFramebuffer(0);
+    self.render_pass = try self.createRenderPass();
+    for (0..self.swapchain_n_images) |i| self.framebuffers[i] = try self.createSwapchainFramebuffer(i);
 
     // commands
     // self.command_pool = try self.createCommandPool();
@@ -139,19 +143,18 @@ pub fn deinit(self: *Engine) void {
     // vk.freeMemory(self.device, self.vertex_buffer_memory, null);
     // vk.destroyCommandPool(self.device, self.command_pool, null);
 
+    for (0..self.swapchain_n_images) |i| vk.destroyFramebuffer(self.device, self.framebuffers[i], null);
+    vk.destroyRenderPass(self.device, self.render_pass, null);
+
     // depth
-    // for (0..self.n_images) |i| {
-    //     vk.destroyImage(self.device, self.depth_images[i], null);
-    //     vk.freeMemory(self.device, self.depth_image_memories[i], null);
-    //     vk.destroyImageView(self.device, self.depth_image_views[i], null);
-    // }
+    for (0..self.swapchain_n_images) |i| {
+        vk.destroyImageView(self.device, self.depth_image_views[i], null);
+        vk.freeMemory(self.device, self.depth_image_memories[i], null);
+        vk.destroyImage(self.device, self.depth_images[i], null);
+    }
 
     // swapchain
-    for (0..self.swapchain_n_images) |i| {
-        vk.destroyFramebuffer(self.device, self.swapchain_framebuffers[i], null);
-        vk.destroyImageView(self.device, self.swapchain_image_views[i], null);
-    }
-    vk.destroyRenderPass(self.device, self.swapchain_render_pass, null);
+    for (0..self.swapchain_n_images) |i| vk.destroyImageView(self.device, self.swapchain_image_views[i], null);
     vk.destroySwapchainKHR(self.device, self.swapchain, null);
 
     // device
@@ -391,12 +394,16 @@ fn createSwapchainImages(self: *Engine) !void {
 
 fn createSwapchainImageView(self: *const Engine, i: usize) !vk.ImageView {
     const create_info = vk.ImageViewCreateInfo{
-        // .components = ,
-        // .flags = ,
-        .format = self.swapchain_format,
         .image = self.swapchain_images[i],
-        // .subresource_range = .{},
-        // .view_type = .@"2d",
+        .view_type = .@"2d",
+        .format = self.swapchain_format,
+        .subresource_range = .{
+            .aspect_mask = .init(.color_bit),
+            .base_mip_level = 0,
+            .level_count = 1,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        },
     };
 
     var image_view: vk.ImageView = .null;
@@ -503,7 +510,7 @@ fn findDepthFormat(self: *const Engine) !vk.Format {
 
 fn createRenderPass(self: *const Engine) !vk.RenderPass {
     const depth_attachment = vk.AttachmentDescription{
-        .format = try self.findDepthFormat(),
+        .format = self.depth_format,
         .samples = .@"1_bit",
         .load_op = .clear,
         .store_op = .dont_care,
@@ -575,7 +582,7 @@ fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
     const attachments = [_]vk.ImageView{ self.swapchain_image_views[i], self.depth_image_views[i] };
 
     const create_info = vk.FramebufferCreateInfo{
-        .render_pass = self.swapchain_render_pass,
+        .render_pass = self.render_pass,
         .attachment_count = @truncate(attachments.len),
         .p_attachments = &attachments,
         .width = self.swapchain_extent.width,
@@ -814,9 +821,9 @@ fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropert
     var mem_props: vk.PhysicalDeviceMemoryProperties = undefined;
     vk.getPhysicalDeviceMemoryProperties(self.physical_device, &mem_props);
     for (0..mem_props.memory_type_count) |i| {
-        if (((type_filter and @as(u32, 1 << @truncate(i))) > 0) and mem_props.memory_types[i].property_flags.contains(props)) {
-            return @truncate(i);
-        }
+        if ((type_filter & (@as(@TypeOf(type_filter), 1) << @truncate(i))) == 0) continue;
+        if (!mem_props.memory_types[i].property_flags.supersetOf(props)) continue;
+        return @truncate(i);
     }
     return error.FailedToFindSuitableMemoryType;
 }
