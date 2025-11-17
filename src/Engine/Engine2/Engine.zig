@@ -43,11 +43,12 @@ framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
 
 // commands
 command_pool: vk.CommandPool = .null,
+command_buffers: [3]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** 3,
+
 vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
 index_buffer: vk.Buffer = .null,
 index_buffer_memory: vk.DeviceMemory = .null,
-command_buffer: vk.CommandBuffer = .null,
 
 // pipeline
 pipeline_layout: vk.PipelineLayout = .null,
@@ -87,6 +88,7 @@ pub fn init(
     // swapchain
     self.swapchain = try self.createSwapchain();
     try self.createSwapchainImages();
+    std.debug.assert(self.swapchain_n_images < 3); // if assertion fails, the rest fails too
     const ssd = try SSD.init(self.surface, self.physical_device);
     self.swapchain_extent = ssd.chooseExtent(&self.window);
     self.swapchain_format = ssd.chooseSurfaceFormat().format;
@@ -105,7 +107,7 @@ pub fn init(
 
     // commands
     self.command_pool = try self.createCommandPool();
-    try self.createCommandBuffers();
+    try self.allocCommandBuffers();
 
     // const size: u64 = vertices.len * @sizeOf(Vertex);
     // self.vertex_buffer = try self.createBuffer(size, .init(.vertex_bit));
@@ -623,7 +625,7 @@ fn allocCommandBuffers(self: *Engine) !void {
     const alloc_info = vk.CommandBufferAllocateInfo{
         .level = .primary,
         .command_pool = self.command_pool,
-        .command_buffer_count = @truncate(self.command_buffers.len),
+        .command_buffer_count = @truncate(self.swapchain_n_images),
     };
 
     return switch (vk.allocateCommandBuffers(self.device, &alloc_info, &self.command_buffers)) {
