@@ -5,6 +5,7 @@ const SSD = @import("SwapchainSupportDetails.zig");
 const Vertex = @import("Vertex.zig");
 const Window = @import("Window.zig");
 const vk = @import("../../vulkan/vulkan.zig");
+
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 const vertices = [_]Vertex{
     .{ .pos = [2]f32{ 0, -0.5 } },
@@ -12,9 +13,6 @@ const vertices = [_]Vertex{
     .{ .pos = [2]f32{ -0.5, 0.5 } },
 };
 const Engine = @This();
-
-// models
-model: [3]Vertex,
 
 // device
 window: Window = undefined,
@@ -28,8 +26,8 @@ present_queue: vk.Queue = .null,
 // swapchain
 swapchain: vk.SwapchainKHR = .null,
 swapchain_format: vk.Format = .b8g8r8a8_unorm,
-swapchain_extent: vk.Extent2D,
-swpachain_n_images: u32 = 0,
+swapchain_extent: vk.Extent2D = .{ .width = 640, .height = 480 },
+swapchain_n_images: u32 = 0,
 swapchain_images: [3]vk.Image = [_]vk.Image{.null} ** 3,
 swapchain_image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
 swapchain_render_pass: vk.RenderPass = .null,
@@ -71,19 +69,15 @@ pub fn init(
     _ = allo;
     var self: Engine = .{};
 
-    self.model = [_]Vertex{
-        .{ .pos = [2]f32{ 0, -0.5 } },
-        .{ .pos = [2]f32{ 0.5, 0.5 } },
-        .{ .pos = [2]f32{ -0.5, 0.5 } },
-    };
-
     // device
     self.window = try createWindow(name, title, extent);
     self.instance = try createInstance(name);
     self.surface = try self.createSurface();
+
     const rdes = [_][*:0]const u8{vk.ExtensionName.swapchain};
     self.physical_device = try self.pickPhysicalDevice(&rdes);
     self.device = try self.createLogicalDevice(&rdes);
+
     const qfis = QFI.init(self.surface, self.physical_device) catch unreachable;
     self.graphics_queue = try self.createQueue(qfis.graphics_family.?);
     self.present_queue = try self.createQueue(qfis.present_family.?);
@@ -91,29 +85,37 @@ pub fn init(
     // swapchain
     self.swapchain = try self.createSwapchain();
     try self.createSwapchainImages();
-    self.render_pass = try self.createRenderPass();
+    self.swapchain_render_pass = try self.createRenderPass();
     const ssd = try SSD.init(self.surface, self.physical_device);
-    self.swapchain_extent = try ssd.chooseExtent(&self.window);
-    self.swapchain_format = try ssd.chooseSurfaceFormat().format;
-    for (0..self.n_images) |i| {
-        self.swapchain_image_views[i] = try self.createSwapchainImageView(i);
-        self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
+    self.swapchain_extent = ssd.chooseExtent(&self.window);
+    self.swapchain_format = ssd.chooseSurfaceFormat().format;
+    for (0..self.swapchain_n_images) |i| self.swapchain_image_views[i] = try self.createSwapchainImageView(i);
+
+    // depth
+    self.depth_format = try self.findDepthFormat();
+    for (0..self.swapchain_n_images) |i| {
+        self.depth_images[i] = try self.createImage();
     }
 
-    // self.depth_format = try self.chooseDepthFormat();
-    // for (0..self.n_images) |i| {
-    //     self.depth_images[i] = try self.createImage();
-    //     self.depth_image_memories[i] = try self.createImageMemory(self.depth_images[i], props);
-    //     self.depth_image_views[i] = try self.createImageView(i);
-    // }
+    self.swapchain_framebuffers[0] = try self.createSwapchainFramebuffer(0);
 
-    self.vertex_buffer = try self.createBuffer();
-    self.vertex_buffer_memory = try self.createBufferMemory(
-        self.vertex_buffer,
-    );
+    // commands
+    // self.command_pool = try self.createCommandPool();
+    // self.command_buffer = try self.createCommandBuffer();
+    // const size: u64 = vertices.len * @sizeOf(Vertex);
+    // self.vertex_buffer = try self.createBuffer(size, .init(.vertex_bit));
+    // self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer);
 
+    // pipeline
     // self.pipeline_layout = try self.createPipelineLayout();
     // self.pipeline = try self.createPipeline();
+
+    // sync objects
+    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+    //     self.image_available_semaphores[i] = try self.createSemaphore();
+    //     self.render_finished_semaphores[i] = try self.createSemaphore();
+    //     self.in_flight_fences[i] = try self.createFence();
+    // }
 
     return self;
 }
@@ -138,18 +140,18 @@ pub fn deinit(self: *Engine) void {
     // vk.destroyCommandPool(self.device, self.command_pool, null);
 
     // depth
-    for (0..self.n_images) |i| {
-        vk.destroyImage(self.device, self.depth_images[i], null);
-        vk.freeMemory(self.device, self.depth_image_memories[i], null);
-        vk.destroyImageView(self.device, self.depth_image_views[i], null);
-    }
+    // for (0..self.n_images) |i| {
+    //     vk.destroyImage(self.device, self.depth_images[i], null);
+    //     vk.freeMemory(self.device, self.depth_image_memories[i], null);
+    //     vk.destroyImageView(self.device, self.depth_image_views[i], null);
+    // }
 
     // swapchain
-    for (0..self.n_images) |i| {
+    for (0..self.swapchain_n_images) |i| {
         vk.destroyFramebuffer(self.device, self.swapchain_framebuffers[i], null);
         vk.destroyImageView(self.device, self.swapchain_image_views[i], null);
     }
-    vk.destroyRenderPass(self.device, self.render_pass, null);
+    vk.destroyRenderPass(self.device, self.swapchain_render_pass, null);
     vk.destroySwapchainKHR(self.device, self.swapchain, null);
 
     // device
@@ -323,7 +325,7 @@ fn createQueue(self: *const Engine, queue_family_index: u32) !vk.Queue {
 }
 
 fn createSwapchain(self: *const Engine) !vk.SwapchainKHR {
-    const ssd = try SSD.init();
+    const ssd = try SSD.init(self.surface, self.physical_device);
     const surface_format = ssd.chooseSurfaceFormat();
     const present_mode = ssd.choosePresentMode();
     const extent = ssd.chooseExtent(&self.window);
@@ -370,7 +372,7 @@ fn createSwapchain(self: *const Engine) !vk.SwapchainKHR {
 }
 
 fn createSwapchainImages(self: *Engine) !void {
-    try switch (vk.getSwapchainImagesKHR(self.device, self.swapchain, &self.n_images, null)) {
+    try switch (vk.getSwapchainImagesKHR(self.device, self.swapchain, &self.swapchain_n_images, null)) {
         .success => {},
         else => |tag| blk: {
             std.debug.print("Error: {s}\n", .{@tagName(tag)});
@@ -378,7 +380,7 @@ fn createSwapchainImages(self: *Engine) !void {
         },
     };
 
-    try switch (vk.getSwapchainImagesKHR(self.device, self.swapchain, &self.n_images, &self.images)) {
+    try switch (vk.getSwapchainImagesKHR(self.device, self.swapchain, &self.swapchain_n_images, &self.swapchain_images)) {
         .success => {},
         else => |tag| blk: {
             std.debug.print("Error: {s}\n", .{@tagName(tag)});
@@ -407,18 +409,92 @@ fn createSwapchainImageView(self: *const Engine, i: usize) !vk.ImageView {
     };
 }
 
-fn findSupportedFormat(
-    self: *const Engine,
-    candidates: []const vk.Format,
-    tiling: vk.ImageTilingFlags,
-    feature: vk.FormatFeatureFlagBits,
-) !vk.Format {
-    for (candidates) |candidate| {
+fn createDepthImage(self: *const Engine) !vk.Image {
+    const create_info = vk.ImageCreateInfo{
+        .image_type = .@"2d",
+        .extent = .{
+            .width = self.swapchain_extent.width,
+            .height = self.swapchain_extent.height,
+            .depth = 1,
+        },
+        .mip_levels = 1,
+        .array_layers = 1,
+        .format = self.depth_format,
+        .tiling = .init(.optimal),
+        .initial_layout = .undefined,
+        .usage = .init(.depth_stencil_attachment_bit),
+        .samples = .@"1_bit",
+        .sharing_mode = .exclusive,
+    };
+
+    var image: vk.Image = .null;
+    return switch (vk.createImage(self.device, &create_info, null, &image)) {
+        .success => image,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateDepthImage;
+        },
+    };
+}
+
+fn allocDepthImage(self: *const Engine, i: usize, props: vk.MemoryPropertyFlags) !vk.DeviceMemory {
+    var mem_reqs: vk.MemoryRequirements = undefined;
+    vk.getImageMemoryRequirements(self.device, self.depth_images[i], &mem_reqs);
+
+    const alloc_info = vk.MemoryAllocateInfo{
+        .allocation_size = mem_reqs.size,
+        .memory_type_index = try self.findMemoryType(mem_reqs.memory_type_bits, props),
+    };
+
+    var memory: vk.DeviceMemory = .null;
+    return switch (vk.allocateMemory(self.device, &alloc_info, null, &memory)) {
+        .success => memory,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToAllocateMemory;
+        },
+    };
+}
+
+fn bindDepthImage(self: *const Engine, i: usize) !void {
+    try switch (vk.bindImageMemory(self.device, self.depth_images[i], self.depth_image_memories[i], 0)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToBindImageMemory;
+        },
+    };
+}
+
+fn createDepthImageView(self: *const Engine, i: usize) !vk.ImageView {
+    const create_info = vk.ImageViewCreateInfo{
+        .image = self.depth_images[i],
+        .view_type = .@"2d",
+        .format = self.depth_format,
+        .subresource_range = .{
+            .aspect_mask = .init(.depth_bit),
+            .base_mip_level = 0,
+            .level_count = 1,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        },
+    };
+
+    var view: vk.ImageView = .null;
+    return switch (vk.createImageView(self.device, &create_info, null, &view)) {
+        .success => view,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateDepthImageView;
+        },
+    };
+}
+
+fn findDepthFormat(self: *const Engine) !vk.Format {
+    for ([_]vk.Format{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint }) |candidate| {
         var props: vk.FormatProperties = undefined;
         vk.getPhysicalDeviceFormatProperties(self.physical_device, candidate, &props);
-        if (tiling.contains(.linear) and (props.linear_tiling_features.contains(feature))) {
-            return candidate;
-        } else if (tiling.contains(.optimal) and props.optimal_tiling_features.contains(feature)) {
+        if (props.optimal_tiling_features.contains(.depth_stencil_attachment_bit)) {
             return candidate;
         }
     }
@@ -427,7 +503,7 @@ fn findSupportedFormat(
 
 fn createRenderPass(self: *const Engine) !vk.RenderPass {
     const depth_attachment = vk.AttachmentDescription{
-        .format = findDepthFormat(), // probably should be stored instead
+        .format = try self.findDepthFormat(),
         .samples = .@"1_bit",
         .load_op = .clear,
         .store_op = .dont_care,
@@ -467,11 +543,11 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
 
     const dependency = vk.SubpassDependency{
         .dst_subpass = 0,
-        .dst_access_mask = .color_attachment_write_bit,
-        .dst_stage_mask = .color_attachment_output_bit,
+        .dst_access_mask = .init(.color_attachment_write_bit),
+        .dst_stage_mask = .init(.color_attachment_output_bit),
         .src_subpass = vk.SubpassExternal,
         .src_access_mask = .initEmpty(),
-        .src_stage_mask = .color_attachment_output_bit,
+        .src_stage_mask = .init(.color_attachment_output_bit),
     };
 
     const attachments = [_]vk.AttachmentDescription{ color_attachment, depth_attachment };
@@ -496,12 +572,14 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
 }
 
 fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
+    const attachments = [_]vk.ImageView{ self.swapchain_image_views[i], self.depth_image_views[i] };
+
     const create_info = vk.FramebufferCreateInfo{
-        .attachment_count = 1,
-        .p_attachments = &self.image_views[i],
+        .render_pass = self.swapchain_render_pass,
+        .attachment_count = @truncate(attachments.len),
+        .p_attachments = &attachments,
         .width = self.swapchain_extent.width,
         .height = self.swapchain_extent.height,
-        .render_pass = self.render_pass,
         .layers = 1,
     };
 
@@ -515,17 +593,6 @@ fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
     };
 }
 
-fn chooseDepthFormat(self: *const Engine) !vk.Format {
-    for ([_]vk.Format{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint }) |format| {
-        var props: vk.FormatProperties = undefined;
-        vk.getPhysicalDeviceFormatProperties(self.physical_device, format, &props);
-        if (props.optimal_tiling_features.contains(.depth_stencil_attachment_bit)) {
-            return format;
-        }
-    }
-    return error.FailedToFindSupportedFormat;
-}
-
 fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
     const create_info = vk.PipelineLayoutCreateInfoKHR{
         .set_layout_count = 0,
@@ -534,9 +601,9 @@ fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
         .push_constant_ranges = null,
     };
 
-    var pipeline_layout: vk.PipelineLayout = .null;
-    return switch (vk.createPipelineLayout(self.device, &create_info, null, &pipeline_layout)) {
-        .success => pipeline_layout,
+    var layout: vk.PipelineLayout = .null;
+    return switch (vk.createPipelineLayout(self.device, &create_info, null, &layout)) {
+        .success => layout,
         else => |tag| blk: {
             std.debug.print("Error: {s}\n", .{@tagName(tag)});
             break :blk error.FailedToCreatePipelineLayout;
@@ -777,6 +844,34 @@ fn createBufferMemory(
     };
 }
 
+fn createSemaphore(self: *const Engine) !vk.Semaphore {
+    const create_info = vk.SemaphoreCreateInfo{};
+
+    var semaphore: vk.Semaphore = .null;
+    return switch (vk.createSemaphore(self.device, &create_info, null, &semaphore)) {
+        .success => semaphore,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateSemaphore;
+        },
+    };
+}
+
+fn createFence(self: *const Engine) !vk.Fence {
+    const create_info = vk.FenceCreateInfo{
+        .flags = .init(.signaled_bit),
+    };
+
+    var fence: vk.Fence = .null;
+    return switch (vk.createFence(self.device, &create_info, null, &fence)) {
+        .success => fence,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateFence;
+        },
+    };
+}
+
 fn bindBufferMemory(self: *const Engine, buffer: vk.Buffer, memory: vk.DeviceMemory, offset: u64) !void {
     try switch (vk.bindBufferMemory(self.device, buffer, memory, offset)) {
         .success => {},
@@ -850,46 +945,6 @@ fn endCommandBuffer(self: *Engine, i: usize) !void {
         else => |tag| blk: {
             std.debug.print("Error: {s}\n", .{@tagName(tag)});
             break :blk error.FailedToEndCommandBuffer;
-        },
-    };
-}
-
-fn createImage(self: *const Engine, image: vk.Image) !void {
-    const create_info = vk.ImageCreateInfo{};
-    try switch (vk.createImage(self.device, &create_info, null, &image)) {
-        .success => {},
-        else => |tag| blk: {
-            std.debug.print("Error: {s}\n", .{@tagName(tag)});
-            break :blk error.FailedToCreateImage;
-        },
-    };
-}
-
-fn createImageMemory(self: *const Engine, image: vk.Image, props: vk.MemoryPropertyFlags) !vk.DeviceMemory {
-    var mem_reqs: vk.MemoryRequirements = undefined;
-    vk.getImageMemoryRequirements(self.device, image, &mem_reqs);
-
-    const alloc_info = vk.MemoryAllocateInfo{
-        .allocation_size = mem_reqs.size,
-        .memory_type_index = self.findMemoryType(mem_reqs.memory_type_bits, props),
-    };
-
-    var memory: vk.DeviceMemory = .null;
-    return switch (vk.allocateMemory(self.device, &alloc_info, null, &memory)) {
-        .success => memory,
-        else => |tag| blk: {
-            std.debug.print("Error: {s}\n", .{@tagName(tag)});
-            break :blk error.FailedToAllocateMemory;
-        },
-    };
-}
-
-fn bindImageMemory(self: *const Engine, image: vk.Image, memory: vk.DeviceMemory) !void {
-    try switch (vk.bindImageMemory(self.device, image, memory, 0)) {
-        .success => {},
-        else => |tag| blk: {
-            std.debug.print("Error: {s}\n", .{@tagName(tag)});
-            break :blk error.FailedToBindImageMemory;
         },
     };
 }

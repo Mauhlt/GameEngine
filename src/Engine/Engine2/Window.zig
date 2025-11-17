@@ -1,5 +1,5 @@
 const std = @import("std");
-const win = @import("..\\windows\\windows.zig");
+const win = @import("../../windows/windows.zig");
 const utf8ToUtf16 = std.unicode.utf8ToUtf16LeStringLiteral;
 const Window = @This();
 

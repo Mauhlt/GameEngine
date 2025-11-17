@@ -37,5 +37,5 @@ pub fn isComplete(self: *const QFI) bool {
 }
 
 pub fn isSameFamily(self: *const QFI) bool {
-    return (self.graphics_family orelse false) and (self.present_family orelse false);
+    return self.graphics_family != null and self.present_family != null;
 }

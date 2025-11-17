@@ -9,7 +9,7 @@ formats: [8]vk.SurfaceFormatKHR,
 n_present_modes: u32,
 present_modes: [8]vk.PresentModeKHR,
 
-pub fn init(surface: vk.SurfaceKHR, physical_device: vk.PhysicalDevice) SSD {
+pub fn init(surface: vk.SurfaceKHR, physical_device: vk.PhysicalDevice) !SSD {
     var capabilities: vk.SurfaceCapabilitiesKHR = undefined;
     try switch (vk.getPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities)) {
         .success => {},
@@ -62,6 +62,10 @@ pub fn init(surface: vk.SurfaceKHR, physical_device: vk.PhysicalDevice) SSD {
     };
 }
 
+pub fn hasItems(self: *const SSD) bool {
+    return self.n_formats > 0 and self.n_present_modes > 0;
+}
+
 pub fn choosePresentMode(self: *const SSD) vk.PresentModeKHR {
     for (self.present_modes[0..self.n_present_modes]) |present_mode| {
         if (present_mode == .mailbox) return present_mode;
@@ -83,7 +87,7 @@ pub fn chooseExtent(self: *const SSD, window: *const Window) vk.Extent2D {
     };
 }
 
-pub fn chooseFormat(self: *const SSD) vk.SurfaceFormatKHR {
+pub fn chooseSurfaceFormat(self: *const SSD) vk.SurfaceFormatKHR {
     for (self.formats[0..self.n_formats]) |surface_format| {
         switch (surface_format.color_space) {
             .srgb_nonlinear => {
