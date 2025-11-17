@@ -101,17 +101,17 @@ pub fn init(
     }
 
     self.render_pass = try self.createRenderPass();
-    for (0..self.swapchain_n_images) |i| self.framebuffers[i] = try self.createSwapchainFramebuffer(i);
+    for (0..self.swapchain_n_images) |i| self.framebuffers[i] = try self.createFramebuffer(i);
 
     // commands
-    // self.command_pool = try self.createCommandPool();
+    self.command_pool = try self.createCommandPool();
     // self.command_buffer = try self.createCommandBuffer();
     // const size: u64 = vertices.len * @sizeOf(Vertex);
     // self.vertex_buffer = try self.createBuffer(size, .init(.vertex_bit));
     // self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer);
 
     // pipeline
-    // self.pipeline_layout = try self.createPipelineLayout();
+    self.pipeline_layout = try self.createPipelineLayout();
     // self.pipeline = try self.createPipeline();
 
     // sync objects
@@ -134,14 +134,14 @@ pub fn deinit(self: *Engine) void {
 
     // pipeline
     // vk.destroyPipeline(self.device, self.pipeline, null);
-    // vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+    vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
 
     // commands
     // vk.destroyBuffer(self.device, self.index_buffer, null);
     // vk.freeMemory(self.device, self.index_buffer_memory, null);
     // vk.destroyBuffer(self.device, self.vertex_buffers[i], null);
     // vk.freeMemory(self.device, self.vertex_buffer_memory, null);
-    // vk.destroyCommandPool(self.device, self.command_pool, null);
+    vk.destroyCommandPool(self.device, self.command_pool, null);
 
     for (0..self.swapchain_n_images) |i| vk.destroyFramebuffer(self.device, self.framebuffers[i], null);
     vk.destroyRenderPass(self.device, self.render_pass, null);
@@ -578,7 +578,7 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
     };
 }
 
-fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
+fn createFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
     const attachments = [_]vk.ImageView{ self.swapchain_image_views[i], self.depth_image_views[i] };
 
     const create_info = vk.FramebufferCreateInfo{
@@ -600,8 +600,26 @@ fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
     };
 }
 
+fn createCommandPool(self: *const Engine) !vk.CommandPool {
+    const qfis = try QFI.init(self.surface, self.physical_device);
+
+    const create_info = vk.CommandPoolCreateInfo{
+        .queue_family_index = qfis.graphics_family.?,
+        .flags = .initMany(&.{ .transient_bit, .reset_command_buffer_bit }),
+    };
+
+    var pool: vk.CommandPool = .null;
+    return switch (vk.createCommandPool(self.device, &create_info, null, &pool)) {
+        .success => pool,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToCreateCommandPool;
+        },
+    };
+}
+
 fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
-    const create_info = vk.PipelineLayoutCreateInfoKHR{
+    const create_info = vk.PipelineLayoutCreateInfo{
         .set_layout_count = 0,
         .p_set_layouts = null,
         .push_constant_range_count = 0,

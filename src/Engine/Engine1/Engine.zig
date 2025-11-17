@@ -26,6 +26,7 @@ render_pass: vk.RenderPass = .null,
 swapchain_framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
 // depth
 depth_images: [3]vk.Image = [_]vk.Image{.null} ** 3,
+depth_image_memories: [3]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** 3,
 depth_image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
 // commands
 command_pool: vk.CommandPool = .null,
