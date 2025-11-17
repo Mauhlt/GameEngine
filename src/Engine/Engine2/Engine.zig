@@ -6,12 +6,15 @@ const Vertex = @import("Vertex.zig");
 const Window = @import("Window.zig");
 const vk = @import("../../vulkan/vulkan.zig");
 
+const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
+
 const vertices = [_]Vertex{
     .{ .pos = [2]f32{ 0, -0.5 } },
     .{ .pos = [2]f32{ 0.5, 0.5 } },
     .{ .pos = [2]f32{ -0.5, 0.5 } },
 };
+
 const Engine = @This();
 
 // device
@@ -115,6 +118,7 @@ pub fn init(
 
         vk.cmdBindPipeline(self.command_buffers[i], .graphics, self.graphics_pipeline);
         self.bindVertexBuffer(self.command_buffers[i]);
+        draw(self.command_buffers[i], @truncate(vertices.len));
 
         self.endRenderPass(i);
         self.endCommandBuffer(i);
@@ -1008,4 +1012,13 @@ fn bindVertexBuffer(self: *const Engine, command_buffer: vk.CommandBuffer) void 
 
 fn draw(command_buffer: vk.CommandBuffer, n_vertices: u32) void {
     vk.cmdDraw(command_buffer, n_vertices, 1, 0, 0);
+}
+
+fn acquireNextImage(self: *const Engine) void {
+    vk.waitForFences(self.device, 1, self.in_flight_fences[self.current_frame], .true, MAX_U64);
+}
+
+fn drawFrame() void {
+    var image_index: u32 = 0;
+    acquireNextImage(&image_index);
 }
