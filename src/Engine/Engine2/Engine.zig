@@ -45,10 +45,11 @@ framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
 command_pool: vk.CommandPool = .null,
 command_buffers: [3]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** 3,
 
+// model
 vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
-index_buffer: vk.Buffer = .null,
-index_buffer_memory: vk.DeviceMemory = .null,
+// index_buffer: vk.Buffer = .null,
+// index_buffer_memory: vk.DeviceMemory = .null,
 
 // pipeline
 pipeline_layout: vk.PipelineLayout = .null,
@@ -88,7 +89,7 @@ pub fn init(
     // swapchain
     self.swapchain = try self.createSwapchain();
     try self.createSwapchainImages();
-    std.debug.assert(self.swapchain_n_images < 3); // if assertion fails, the rest fails too
+    std.debug.assert(self.swapchain_n_images <= 3); // if assertion fails, the rest fails too
     const ssd = try SSD.init(self.surface, self.physical_device);
     self.swapchain_extent = ssd.chooseExtent(&self.window);
     self.swapchain_format = ssd.chooseSurfaceFormat().format;
@@ -109,41 +110,47 @@ pub fn init(
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
 
-    // const size: u64 = vertices.len * @sizeOf(Vertex);
-    // self.vertex_buffer = try self.createBuffer(size, .init(.vertex_bit));
-    // self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer);
+    //// model
+    const size: u64 = vertices.len * @sizeOf(Vertex);
+    self.vertex_buffer = try self.createBuffer(size, .init(.vertex_bit));
+    self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer);
+    try self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
+    // self.index_buffer = try self.createBuffer(size, .init(.vertex_bit));
+    // self.index_buffer_memory = try self.createBufferMemory(self.index_buffer);
 
     // pipeline
     self.pipeline_layout = try self.createPipelineLayout();
     // self.pipeline = try self.createPipeline();
 
     // sync objects
-    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-    //     self.image_available_semaphores[i] = try self.createSemaphore();
-    //     self.render_finished_semaphores[i] = try self.createSemaphore();
-    //     self.in_flight_fences[i] = try self.createFence();
-    // }
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        self.image_available_semaphores[i] = try self.createSemaphore();
+        self.render_finished_semaphores[i] = try self.createSemaphore();
+        self.in_flight_fences[i] = try self.createFence();
+    }
 
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
     // sync objects
-    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-    //     vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
-    //     vk.destroySemaphore(self.device, self.render_finished_semaphores[i], null);
-    //     vk.destroyFence(self.device, self.in_flight_fences[i], null);
-    // }
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
+        vk.destroySemaphore(self.device, self.render_finished_semaphores[i], null);
+        vk.destroyFence(self.device, self.in_flight_fences[i], null);
+    }
 
     // pipeline
     // vk.destroyPipeline(self.device, self.pipeline, null);
     vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
 
-    // commands
+    // model
     // vk.destroyBuffer(self.device, self.index_buffer, null);
     // vk.freeMemory(self.device, self.index_buffer_memory, null);
-    // vk.destroyBuffer(self.device, self.vertex_buffers[i], null);
-    // vk.freeMemory(self.device, self.vertex_buffer_memory, null);
+    vk.destroyBuffer(self.device, self.vertex_buffer, null);
+    vk.freeMemory(self.device, self.vertex_buffer_memory, null);
+
+    // commands
     vk.destroyCommandPool(self.device, self.command_pool, null);
 
     for (0..self.swapchain_n_images) |i| vk.destroyFramebuffer(self.device, self.framebuffers[i], null);
@@ -642,7 +649,7 @@ fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
         .set_layout_count = 0,
         .p_set_layouts = null,
         .push_constant_range_count = 0,
-        .push_constant_ranges = null,
+        .p_push_constant_ranges = null,
     };
 
     var layout: vk.PipelineLayout = .null;
@@ -888,6 +895,16 @@ fn createBufferMemory(
     };
 }
 
+fn bindBufferMemory(self: *const Engine, buffer: vk.Buffer, memory: vk.DeviceMemory, offset: u64) !void {
+    try switch (vk.bindBufferMemory(self.device, buffer, memory, offset)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToBindBufferMemory;
+        },
+    };
+}
+
 fn createSemaphore(self: *const Engine) !vk.Semaphore {
     const create_info = vk.SemaphoreCreateInfo{};
 
@@ -912,16 +929,6 @@ fn createFence(self: *const Engine) !vk.Fence {
         else => |tag| blk: {
             std.debug.print("Error: {s}\n", .{@tagName(tag)});
             break :blk error.FailedToCreateFence;
-        },
-    };
-}
-
-fn bindBufferMemory(self: *const Engine, buffer: vk.Buffer, memory: vk.DeviceMemory, offset: u64) !void {
-    try switch (vk.bindBufferMemory(self.device, buffer, memory, offset)) {
-        .success => {},
-        else => |tag| blk: {
-            std.debug.print("Error: {s}\n", .{@tagName(tag)});
-            break :blk error.FailedToBindBufferMemory;
         },
     };
 }
