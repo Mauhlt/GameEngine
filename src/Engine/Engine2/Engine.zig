@@ -105,7 +105,8 @@ pub fn init(
 
     // commands
     self.command_pool = try self.createCommandPool();
-    // self.command_buffer = try self.createCommandBuffer();
+    try self.createCommandBuffers();
+
     // const size: u64 = vertices.len * @sizeOf(Vertex);
     // self.vertex_buffer = try self.createBuffer(size, .init(.vertex_bit));
     // self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer);
@@ -618,6 +619,22 @@ fn createCommandPool(self: *const Engine) !vk.CommandPool {
     };
 }
 
+fn allocCommandBuffers(self: *Engine) !void {
+    const alloc_info = vk.CommandBufferAllocateInfo{
+        .level = .primary,
+        .command_pool = self.command_pool,
+        .command_buffer_count = @truncate(self.command_buffers.len),
+    };
+
+    return switch (vk.allocateCommandBuffers(self.device, &alloc_info, &self.command_buffers)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToAllocateCommandBuffers;
+        },
+    };
+}
+
 fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
     const create_info = vk.PipelineLayoutCreateInfo{
         .set_layout_count = 0,
@@ -904,19 +921,6 @@ fn bindBufferMemory(self: *const Engine, buffer: vk.Buffer, memory: vk.DeviceMem
             std.debug.print("Error: {s}\n", .{@tagName(tag)});
             break :blk error.FailedToBindBufferMemory;
         },
-    };
-}
-
-fn allocCommandBuffers(self: *Engine) !void {
-    const alloc_info = vk.CommandBufferAllocateInfo{
-        .command_buffer_count = self.n_images,
-        .command_pool = self.command_pool,
-        .level = .primary,
-    };
-
-    try switch (vk.allocateCommandBuffers(self.device, &alloc_info, &self.command_buffers)) {
-        .success => {},
-        else => error.FailedToAllocateCommandBuffers,
     };
 }
 
