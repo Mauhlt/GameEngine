@@ -7,7 +7,7 @@ const Window = @import("Window.zig");
 const vk = @import("../../vulkan/vulkan.zig");
 
 const MAX_U64 = std.math.maxInt(u64);
-const MAX_FRAMES_IN_FLIGHT: usize = 2;
+const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 
 const vertices = [_]Vertex{
     .{ .pos = [2]f32{ 0, -0.5 } },
@@ -75,11 +75,22 @@ pub fn init(
     extent: vk.Extent2D,
 ) !Engine {
     _ = allo;
+
     var self: Engine = .{};
 
     // device
     self.window = try createWindow(name, title, extent);
-    self.instance = try createInstance(name);
+    self.window.show();
+    const ries = switch (@import("builtin").os.tag) {
+        .windows => [_][*:0]const u8{
+            vk.ExtensionName.surface,
+            vk.ExtensionName.win32_surface,
+        },
+        .macos => [_][*:0]const u8{},
+        .linux => [_][*:0]const u8{},
+        else => unreachable,
+    };
+    self.instance = try createInstance(name, &ries);
     self.surface = try self.createSurface();
 
     const rdes = [_][*:0]const u8{vk.ExtensionName.swapchain};
@@ -110,66 +121,67 @@ pub fn init(
     self.render_pass = try self.createRenderPass();
     for (0..self.swapchain_n_images) |i| self.framebuffers[i] = try self.createFramebuffer(i);
 
-    // commands
-    self.command_pool = try self.createCommandPool();
-    try self.allocCommandBuffers();
-    for (0..self.swapchain_n_images) |i| {
-        self.beginCommandBuffer(i);
-        self.beginRenderPass(i);
-
-        vk.cmdBindPipeline(self.command_buffers[i], .graphics, self.graphics_pipeline);
-        self.bindVertexBuffer(self.command_buffers[i]);
-        draw(self.command_buffers[i], @truncate(vertices.len));
-
-        self.endRenderPass(i);
-        self.endCommandBuffer(i);
-    }
-
-    //// model
-    const size: u64 = vertices.len * @sizeOf(Vertex);
-    self.vertex_buffer = try self.createBuffer(size, .init(.vertex_buffer_bit));
-    self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer, .initMany(&.{ .host_visible_bit, .host_coherent_bit }));
-    try self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
-
-    // self.index_buffer = try self.createBuffer(size, .init(.vertex_bit));
-    // self.index_buffer_memory = try self.createBufferMemory(self.index_buffer);
-    // try self.bindBufferMemory(self.index_buffer, self.index_buffer_memory, 0);
-
-    // pipeline
-    self.pipeline_layout = try self.createPipelineLayout();
-    // self.pipeline = try self.createPipeline();
-
-    // sync objects
-    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-        self.image_available_semaphores[i] = try self.createSemaphore();
-        self.render_finished_semaphores[i] = try self.createSemaphore();
-        self.in_flight_fences[i] = try self.createFence();
-    }
+    // model
+    // const size: u64 = vertices.len * @sizeOf(Vertex);
+    // self.vertex_buffer = try self.createBuffer(size, .init(.vertex_buffer_bit));
+    // self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer, .initMany(&.{ .host_visible_bit, .host_coherent_bit }));
+    // try self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
+    //
+    // // self.index_buffer = try self.createBuffer(size, .init(.vertex_bit));
+    // // self.index_buffer_memory = try self.createBufferMemory(self.index_buffer);
+    // // try self.bindBufferMemory(self.index_buffer, self.index_buffer_memory, 0);
+    //
+    // // pipeline
+    // self.pipeline_layout = try self.createPipelineLayout();
+    // self.pipeline = try self.createGraphicsPipeline(allo);
+    //
+    // // sync objects
+    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+    //     self.image_available_semaphores[i] = try self.createSemaphore();
+    //     self.render_finished_semaphores[i] = try self.createSemaphore();
+    //     self.in_flight_fences[i] = try self.createFence();
+    // }
+    //
+    // // commands - single time commands - simple data
+    // self.command_pool = try self.createCommandPool();
+    // try self.allocCommandBuffers();
+    // for (0..self.swapchain_n_images) |i| {
+    //     try self.beginCommandBuffer(i);
+    //     try self.beginRenderPass(i);
+    //
+    //     vk.cmdBindPipeline(self.command_buffers[i], .graphics, self.pipeline);
+    //     draw(self.command_buffers[i], @truncate(vertices.len));
+    //     bind(self.vertex_buffer, self.command_buffers[i]);
+    //
+    //     try self.endRenderPass(i);
+    //     try self.endCommandBuffer(i);
+    // }
 
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
-    // sync objects
-    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-        vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
-        vk.destroySemaphore(self.device, self.render_finished_semaphores[i], null);
-        vk.destroyFence(self.device, self.in_flight_fences[i], null);
-    }
+    // // sync objects
+    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+    //     vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
+    //     vk.destroySemaphore(self.device, self.render_finished_semaphores[i], null);
+    //     vk.destroyFence(self.device, self.in_flight_fences[i], null);
+    // }
+    //
+    // // pipeline
+    // // vk.destroyPipeline(self.device, self.pipeline, null);
+    // vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+    //
+    // // model
+    // // vk.destroyBuffer(self.device, self.index_buffer, null);
+    // // vk.freeMemory(self.device, self.index_buffer_memory, null);
+    // vk.destroyBuffer(self.device, self.vertex_buffer, null);
+    // vk.freeMemory(self.device, self.vertex_buffer_memory, null);
+    //
+    // // commands
+    // vk.destroyCommandPool(self.device, self.command_pool, null);
 
-    // pipeline
-    // vk.destroyPipeline(self.device, self.pipeline, null);
-    vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
-
-    // model
-    // vk.destroyBuffer(self.device, self.index_buffer, null);
-    // vk.freeMemory(self.device, self.index_buffer_memory, null);
-    vk.destroyBuffer(self.device, self.vertex_buffer, null);
-    vk.freeMemory(self.device, self.vertex_buffer_memory, null);
-
-    // commands
-    vk.destroyCommandPool(self.device, self.command_pool, null);
-
+    // frame
     for (0..self.swapchain_n_images) |i| vk.destroyFramebuffer(self.device, self.framebuffers[i], null);
     vk.destroyRenderPass(self.device, self.render_pass, null);
 
@@ -191,6 +203,17 @@ pub fn deinit(self: *Engine) void {
     self.window.deinit();
 }
 
+pub fn run(self: *Engine) !void {
+    if (!self.window.shouldClose()) {
+        self.window.poll();
+        try self.drawFrame();
+    }
+    try switch (vk.deviceWaitIdle(self.device)) {
+        .success => {},
+        else => error.FailedToIdleDevice,
+    };
+}
+
 fn createWindow(
     comptime name: [*:0]const u8,
     comptime title: [*:0]const u8,
@@ -199,23 +222,13 @@ fn createWindow(
     return try Window.init(std.mem.span(name), std.mem.span(title), extent.width, extent.height);
 }
 
-fn createInstance(name: [*:0]const u8) !vk.Instance {
+fn createInstance(name: [*:0]const u8, ries: []const vk.ExtensionName) !vk.Instance {
     const app_info = vk.ApplicationInfo{
         .api_version = vk.makeApiVersion(0, 1, 0, 0),
         .p_application_name = name,
         .application_version = vk.makeApiVersion(0, 1, 0, 0),
         .p_engine_name = "EurekaEngine",
         .engine_version = vk.makeApiVersion(0, 1, 0, 0),
-    };
-
-    const ries = switch (@import("builtin").os.tag) {
-        .windows => [_][*:0]const u8{
-            vk.ExtensionName.surface,
-            vk.ExtensionName.win32_surface,
-        },
-        .macos => [_][*:0]const u8{},
-        .linux => [_][*:0]const u8{},
-        else => unreachable,
     };
 
     const exts = try Extensions.getInstanceExtensions();
@@ -679,11 +692,10 @@ fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
     };
 }
 
-fn readFile(shader_filename: []const u8) ![]const u8 {
-    const allo = std.heap.page_allocator;
+fn readFile(allo: std.mem.Allocator, shader_filename: []const u8) ![]const u8 {
     var exe_path_buf: [1024]u8 = undefined;
     var exe_path = std.fs.selfExePath(&exe_path_buf) catch unreachable;
-    const idx = std.mem.indexOf(u8, exe_path, ".zig-cache").?;
+    const idx = std.mem.indexOf(u8, exe_path, "zig-out").?;
     const basepath = exe_path[0..idx];
 
     const filepath = try std.fs.path.join(allo, &.{
@@ -720,10 +732,10 @@ fn createShaderModule(self: *const Engine, code: []const u8) !vk.ShaderModule {
 }
 
 fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipeline {
-    const vert_code = try readFile();
+    const vert_code = try readFile(allo, "simple_shader.vert.spv");
     defer allo.free(vert_code);
 
-    const frag_code = try readFile();
+    const frag_code = try readFile(allo, "simple_shader.frag.spv");
     defer allo.free(frag_code);
 
     const vert_sm = try self.createShaderModule(vert_code);
@@ -758,15 +770,15 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
     const viewport = vk.Viewport{
         .x = 0,
         .y = 0,
-        .width = self.extent.width,
-        .height = self.extent.height,
+        .width = @floatFromInt(self.swapchain_extent.width),
+        .height = @floatFromInt(self.swapchain_extent.height),
         .min_depth = 0,
         .max_depth = 1,
     };
 
     const scissor = vk.Rect2D{
-        .offset = [2]vk.Offset2D{ 0, 0 },
-        .extent = self.extent,
+        .offset = .{ .x = 0, .y = 0 },
+        .extent = self.swapchain_extent,
     };
 
     const viewport_state = vk.PipelineViewportStateCreateInfo{
@@ -781,7 +793,7 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .rasterizer_discard_enable = .false,
         .polygon_mode = .fill,
         .line_width = 1,
-        .cull_mode = .none,
+        .cull_mode = .initEmpty(),
         .front_face = .clockwise,
         .depth_bias_enable = .false,
         .depth_bias_constant_factor = 0,
@@ -811,7 +823,7 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
 
     const color_blend_state = vk.PipelineColorBlendStateCreateInfo{
         .logic_op_enable = .false,
-        .logic_of = .copy,
+        .logic_op = .copy,
         .attachment_count = 1,
         .p_attachments = &color_blend_attachment,
         .blend_constants = [4]f32{ 0, 0, 0, 0 },
@@ -961,38 +973,26 @@ fn beginCommandBuffer(self: *const Engine, i: usize) !void {
 
 fn beginRenderPass(self: *const Engine, i: usize) !void {
     const clear_values = [_]vk.ClearValue{
-        .{
-            .color = [_]f32{0.1} ** 4,
-        },
-        .{
-            .depth_stencil = [_]f32{ 1, 0 },
-        },
+        .{ .color = .{ .float32 = [_]f32{0} ** 4 } },
+        .{ .depth_stencil = .{ .depth = 1, .stencil = 0 } },
     };
+
     const rp_begin_info = vk.RenderPassBeginInfo{
         .render_pass = self.render_pass,
         .framebuffer = self.framebuffers[i],
         .render_area = .{
             .offset = .{ .x = 0, .y = 0 },
-            .extent = self.extent,
+            .extent = self.swapchain_extent,
         },
         .clear_value_count = @truncate(clear_values.len),
         .p_clear_values = &clear_values,
     };
 
-    try switch (vk.cmdBeginRenderPass(self.command_buffers[i], &rp_begin_info, .@"inline")) {
-        .success => {},
-        else => error.FailedToBeginRenderPass,
-    };
+    vk.cmdBeginRenderPass(self.command_buffers[i], &rp_begin_info, .@"inline");
 }
 
 fn endRenderPass(self: *Engine, i: usize) !void {
-    try switch (vk.cmdEndRenderPass(self.command_buffers[i])) {
-        .success => {},
-        else => |tag| blk: {
-            std.debug.print("Error: {s}\n", .{@tagName(tag)});
-            break :blk error.FailedToEndRenderPass;
-        },
-    };
+    vk.cmdEndRenderPass(self.command_buffers[i]);
 }
 
 fn endCommandBuffer(self: *Engine, i: usize) !void {
@@ -1005,18 +1005,18 @@ fn endCommandBuffer(self: *Engine, i: usize) !void {
     };
 }
 
-fn bindVertexBuffer(self: *const Engine, command_buffer: vk.CommandBuffer) void {
-    const buffers = [_]vk.Buffer{self.vertex_buffer};
-    const offsets = [_]vk.DeviceSize{0};
-    vk.cmdBindVertexBuffers(command_buffer, 0, 1, &buffers, &offsets);
-}
-
 fn draw(command_buffer: vk.CommandBuffer, n_vertices: u32) void {
     vk.cmdDraw(command_buffer, n_vertices, 1, 0, 0);
 }
 
-fn acquireNextImage(self: *const Engine) !void {
-    try switch (vk.waitForFences(self.device, 1, self.in_flight_fences[self.current_frame], .true, MAX_U64)) {
+fn bind(vertex_buffer: vk.Buffer, command_buffer: vk.CommandBuffer) void {
+    const buffers = [_]vk.Buffer{vertex_buffer};
+    const offsets = [_]vk.DeviceSize{0};
+    vk.cmdBindVertexBuffers(command_buffer, 0, 1, &buffers, &offsets);
+}
+
+fn acquireNextImage(self: *const Engine, image_index: *u32) !void {
+    try switch (vk.waitForFences(self.device, 1, &self.in_flight_fences[self.current_frame], .true, MAX_U64)) {
         .success => {},
         else => |tag| blk: {
             std.debug.print("Error: {s}\n", .{@tagName(tag)});
@@ -1042,7 +1042,7 @@ fn submitCommandBuffers(self: *Engine, image_index: *u32) !void {
     }
     self.images_in_flight[image_index.*] = self.in_flight_fences[self.current_frame];
 
-    const buffers = [_]vk.CommandBuffer{self.command_buffers[image_index]};
+    const buffers = [_]vk.CommandBuffer{self.command_buffers[image_index.*]};
     const wait_semaphores = [_]vk.Semaphore{self.image_available_semaphores[self.current_frame]};
     const wait_stages = [_]vk.PipelineStageFlags{.init(.color_attachment_output_bit)};
     const signal_semaphores = [_]vk.Semaphore{self.render_finished_semaphores[self.current_frame]};
@@ -1085,7 +1085,6 @@ fn submitCommandBuffers(self: *Engine, image_index: *u32) !void {
 
 fn drawFrame(self: *Engine) !void {
     var image_index: u32 = 0;
-    acquireNextImage(&image_index);
-
+    try self.acquireNextImage(&image_index);
     try self.submitCommandBuffers(&image_index);
 }
