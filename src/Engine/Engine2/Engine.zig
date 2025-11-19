@@ -62,6 +62,7 @@ pipeline: vk.Pipeline = .null,
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 in_flight_fences: [MAX_FRAMES_IN_FLIGHT]vk.Fence = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT,
+images_in_flight: [MAX_FRAMES_IN_FLIGHT]vk.Fence = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT,
 
 // constants
 current_frame: u32 = 0,
@@ -1014,11 +1015,77 @@ fn draw(command_buffer: vk.CommandBuffer, n_vertices: u32) void {
     vk.cmdDraw(command_buffer, n_vertices, 1, 0, 0);
 }
 
-fn acquireNextImage(self: *const Engine) void {
-    vk.waitForFences(self.device, 1, self.in_flight_fences[self.current_frame], .true, MAX_U64);
+fn acquireNextImage(self: *const Engine) !void {
+    try switch (vk.waitForFences(self.device, 1, self.in_flight_fences[self.current_frame], .true, MAX_U64)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToWaitForFences;
+        },
+    };
+
+    try switch (vk.acquireNextImageKHR(self.device, self.swapchain, MAX_U64, self.image_available_semaphores[self.current_frame], .null, image_index)) {
+        .success => {},
+        else => error.FailedToAcquireNextImage,
+    };
 }
 
-fn drawFrame() void {
+fn submitCommandBuffers(self: *Engine, image_index: *u32) !void {
+    switch (self.images_in_flight[image_index.*]) {
+        .null => {},
+        else => {
+            try switch (vk.waitForFences(self.device, 1, &self.images_in_flight[image_index.*], .true, MAX_U64)) {
+                .success => {},
+                else => error.FailedToWaitForFences,
+            };
+        },
+    }
+    self.images_in_flight[image_index.*] = self.in_flight_fences[self.current_frame];
+
+    const buffers = [_]vk.CommandBuffer{self.command_buffers[image_index]};
+    const wait_semaphores = [_]vk.Semaphore{self.image_available_semaphores[self.current_frame]};
+    const wait_stages = [_]vk.PipelineStageFlags{.init(.color_attachment_output_bit)};
+    const signal_semaphores = [_]vk.Semaphore{self.render_finished_semaphores[self.current_frame]};
+
+    const submit_info = vk.SubmitInfo{
+        .wait_semaphore_count = 1,
+        .p_wait_semaphores = &wait_semaphores,
+        .p_wait_dst_stage_mask = &wait_stages,
+        .command_buffer_count = 1,
+        .p_command_buffers = &buffers,
+        .signal_semaphore_count = 1,
+        .p_signal_semaphores = &signal_semaphores,
+    };
+
+    try switch (vk.resetFences(self.device, 1, &self.in_flight_fences[self.current_frame])) {
+        .success => {},
+        else => error.FailedToResetFences,
+    };
+
+    try switch (vk.queueSubmit(self.graphics_queue, 1, &submit_info, self.in_flight_fences[self.current_frame])) {
+        .success => {},
+        else => error.FailedToSubmitDrawCommandBuffer,
+    };
+
+    const swapchains = [_]vk.SwapchainKHR{self.swapchain};
+    const present_info = vk.PresentInfoKHR{
+        .wait_semaphore_count = 1,
+        .p_wait_semaphores = &signal_semaphores,
+        .swapchain_count = 1,
+        .p_swapchains = &swapchains,
+        .p_image_indices = image_index,
+    };
+    try switch (vk.queuePresentKHR(self.present_queue, &present_info)) {
+        .success => {},
+        else => error.FailedToPresentQueue,
+    };
+
+    self.current_frame = @mod(self.current_frame + 1, MAX_FRAMES_IN_FLIGHT);
+}
+
+fn drawFrame(self: *Engine) !void {
     var image_index: u32 = 0;
     acquireNextImage(&image_index);
+
+    try self.submitCommandBuffers(&image_index);
 }
