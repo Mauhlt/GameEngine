@@ -122,11 +122,12 @@ pub fn init(
     for (0..self.swapchain_n_images) |i| self.framebuffers[i] = try self.createFramebuffer(i);
 
     // model
-    // const size: u64 = vertices.len * @sizeOf(Vertex);
-    // self.vertex_buffer = try self.createBuffer(size, .init(.vertex_buffer_bit));
-    // self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer, .initMany(&.{ .host_visible_bit, .host_coherent_bit }));
-    // try self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
-    //
+    const size: u64 = vertices.len * @sizeOf(Vertex);
+    self.vertex_buffer = try self.createBuffer(size, .init(.vertex_buffer_bit));
+    self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer, .initMany(&.{ .host_visible_bit, .host_coherent_bit }));
+    try self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
+    try self.mapBufferMemory(self.vertex_buffer_memory, size, @ptrCast(&vertices));
+
     // // self.index_buffer = try self.createBuffer(size, .init(.vertex_bit));
     // // self.index_buffer_memory = try self.createBufferMemory(self.index_buffer);
     // // try self.bindBufferMemory(self.index_buffer, self.index_buffer_memory, 0);
@@ -161,24 +162,24 @@ pub fn init(
 }
 
 pub fn deinit(self: *Engine) void {
-    // // sync objects
+    // sync objects
     // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
     //     vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
     //     vk.destroySemaphore(self.device, self.render_finished_semaphores[i], null);
     //     vk.destroyFence(self.device, self.in_flight_fences[i], null);
     // }
-    //
-    // // pipeline
+
+    // pipeline
     // // vk.destroyPipeline(self.device, self.pipeline, null);
     // vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
-    //
-    // // model
-    // // vk.destroyBuffer(self.device, self.index_buffer, null);
-    // // vk.freeMemory(self.device, self.index_buffer_memory, null);
-    // vk.destroyBuffer(self.device, self.vertex_buffer, null);
-    // vk.freeMemory(self.device, self.vertex_buffer_memory, null);
-    //
-    // // commands
+
+    // model
+    // vk.destroyBuffer(self.device, self.index_buffer, null);
+    // vk.freeMemory(self.device, self.index_buffer_memory, null);
+    vk.destroyBuffer(self.device, self.vertex_buffer, null);
+    vk.freeMemory(self.device, self.vertex_buffer_memory, null);
+
+    // commands
     // vk.destroyCommandPool(self.device, self.command_pool, null);
 
     // frame
@@ -222,7 +223,10 @@ fn createWindow(
     return try Window.init(std.mem.span(name), std.mem.span(title), extent.width, extent.height);
 }
 
-fn createInstance(name: [*:0]const u8, ries: []const vk.ExtensionName) !vk.Instance {
+fn createInstance(
+    name: [*:0]const u8,
+    ries: []const [*:0]const u8,
+) !vk.Instance {
     const app_info = vk.ApplicationInfo{
         .api_version = vk.makeApiVersion(0, 1, 0, 0),
         .p_application_name = name,
@@ -233,7 +237,7 @@ fn createInstance(name: [*:0]const u8, ries: []const vk.ExtensionName) !vk.Insta
 
     const exts = try Extensions.getInstanceExtensions();
     // exts.print();
-    if (!exts.hasRequiredExtensions(&ries)) //
+    if (!exts.hasRequiredExtensions(ries)) //
         return error.FoundNoSuitableVulkanInstance;
 
     const create_info = vk.InstanceCreateInfo{
@@ -245,7 +249,7 @@ fn createInstance(name: [*:0]const u8, ries: []const vk.ExtensionName) !vk.Insta
         .enabled_layer_count = 0,
         .pp_enabled_layer_names = null,
         .enabled_extension_count = @truncate(ries.len),
-        .pp_enabled_extension_names = &ries,
+        .pp_enabled_extension_names = @ptrCast(ries),
     };
 
     var instance: vk.Instance = .null;
@@ -759,8 +763,8 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
 
     var bind_descs: [1]vk.VertexInputBindingDescription = undefined;
     var attr_descs: [1]vk.VertexInputAttributeDescription = undefined;
-    Vertex.getBindingDescriptions(@ptrCast(&bind_descs));
-    Vertex.getAttributeDescriptions(@ptrCast(&attr_descs));
+    Vertex.getBindingDescriptions(&bind_descs);
+    Vertex.getAttributeDescriptions(&attr_descs);
 
     const input_assembly_state = vk.PipelineInputAssemblyStateCreateInfo{
         .topology = .triangle_list,
@@ -932,6 +936,21 @@ fn bindBufferMemory(self: *const Engine, buffer: vk.Buffer, memory: vk.DeviceMem
             break :blk error.FailedToBindBufferMemory;
         },
     };
+}
+
+fn mapBufferMemory(self: *const Engine, memory: vk.DeviceMemory, size: u64, model: []const Vertex) !void {
+    var data: ?*anyopaque = null;
+    try switch (vk.mapMemory(self.device, memory, 0, size, .initEmpty(), &data)) {
+        .success => {},
+        else => |tag| blk: {
+            std.debug.print("Map Memory: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToMapMemory;
+        },
+    };
+    defer vk.unmapMemory(self.device, memory);
+
+    const gpu_vertices: [*]Vertex = @ptrCast(@alignCast(data));
+    @memcpy(gpu_vertices, model);
 }
 
 fn createSemaphore(self: *const Engine) !vk.Semaphore {
