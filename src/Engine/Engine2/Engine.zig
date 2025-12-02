@@ -74,7 +74,7 @@ pub fn init(
     comptime title: [*:0]const u8,
     extent: vk.Extent2D,
 ) !Engine {
-    _ = allo;
+    // _ = allo;
 
     var self: Engine = .{};
 
@@ -128,50 +128,50 @@ pub fn init(
     try self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
     try self.mapBufferMemory(self.vertex_buffer_memory, size, @ptrCast(&vertices));
 
-    // // self.index_buffer = try self.createBuffer(size, .init(.vertex_bit));
-    // // self.index_buffer_memory = try self.createBufferMemory(self.index_buffer);
-    // // try self.bindBufferMemory(self.index_buffer, self.index_buffer_memory, 0);
-    //
-    // // pipeline
-    // self.pipeline_layout = try self.createPipelineLayout();
-    // self.pipeline = try self.createGraphicsPipeline(allo);
-    //
-    // // sync objects
-    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-    //     self.image_available_semaphores[i] = try self.createSemaphore();
-    //     self.render_finished_semaphores[i] = try self.createSemaphore();
-    //     self.in_flight_fences[i] = try self.createFence();
-    // }
-    //
-    // // commands - single time commands - simple data
-    // self.command_pool = try self.createCommandPool();
-    // try self.allocCommandBuffers();
-    // for (0..self.swapchain_n_images) |i| {
-    //     try self.beginCommandBuffer(i);
-    //     try self.beginRenderPass(i);
-    //
-    //     vk.cmdBindPipeline(self.command_buffers[i], .graphics, self.pipeline);
-    //     draw(self.command_buffers[i], @truncate(vertices.len));
-    //     bind(self.vertex_buffer, self.command_buffers[i]);
-    //
-    //     try self.endRenderPass(i);
-    //     try self.endCommandBuffer(i);
-    // }
+    // self.index_buffer = try self.createBuffer(size, .init(.vertex_bit));
+    // self.index_buffer_memory = try self.createBufferMemory(self.index_buffer);
+    // try self.bindBufferMemory(self.index_buffer, self.index_buffer_memory, 0);
+
+    // pipeline
+    self.pipeline_layout = try self.createPipelineLayout();
+    self.pipeline = try self.createGraphicsPipeline(allo);
+
+    // sync objects
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        self.image_available_semaphores[i] = try self.createSemaphore();
+        self.render_finished_semaphores[i] = try self.createSemaphore();
+        self.in_flight_fences[i] = try self.createFence();
+    }
+
+    // commands - single time commands - simple data
+    self.command_pool = try self.createCommandPool();
+    try self.allocCommandBuffers();
+    for (0..self.swapchain_n_images) |i| {
+        try self.beginCommandBuffer(i);
+        try self.beginRenderPass(i);
+
+        vk.cmdBindPipeline(self.command_buffers[i], .graphics, self.pipeline);
+        draw(self.command_buffers[i], @truncate(vertices.len)); // doesn't make sense to do this here
+        bind(self.vertex_buffer, self.command_buffers[i]);
+
+        try self.endRenderPass(i);
+        try self.endCommandBuffer(i);
+    }
 
     return self;
 }
 
 pub fn deinit(self: *Engine) void {
     // sync objects
-    // for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-    //     vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
-    //     vk.destroySemaphore(self.device, self.render_finished_semaphores[i], null);
-    //     vk.destroyFence(self.device, self.in_flight_fences[i], null);
-    // }
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
+        vk.destroySemaphore(self.device, self.render_finished_semaphores[i], null);
+        vk.destroyFence(self.device, self.in_flight_fences[i], null);
+    }
 
     // pipeline
-    // // vk.destroyPipeline(self.device, self.pipeline, null);
-    // vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+    vk.destroyPipeline(self.device, self.pipeline, null);
+    vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
 
     // model
     // vk.destroyBuffer(self.device, self.index_buffer, null);
@@ -180,7 +180,7 @@ pub fn deinit(self: *Engine) void {
     vk.freeMemory(self.device, self.vertex_buffer_memory, null);
 
     // commands
-    // vk.destroyCommandPool(self.device, self.command_pool, null);
+    vk.destroyCommandPool(self.device, self.command_pool, null);
 
     // frame
     for (0..self.swapchain_n_images) |i| vk.destroyFramebuffer(self.device, self.framebuffers[i], null);
@@ -205,7 +205,7 @@ pub fn deinit(self: *Engine) void {
 }
 
 pub fn run(self: *Engine) !void {
-    if (!self.window.shouldClose()) {
+    while (!self.window.shouldClose()) {
         self.window.poll();
         try self.drawFrame();
     }
@@ -1035,7 +1035,13 @@ fn bind(vertex_buffer: vk.Buffer, command_buffer: vk.CommandBuffer) void {
 }
 
 fn acquireNextImage(self: *const Engine, image_index: *u32) !void {
-    try switch (vk.waitForFences(self.device, 1, &self.in_flight_fences[self.current_frame], .true, MAX_U64)) {
+    try switch (vk.waitForFences(
+        self.device,
+        1,
+        &self.in_flight_fences[self.current_frame],
+        .true,
+        MAX_U64,
+    )) {
         .success => {},
         else => |tag| blk: {
             std.debug.print("Error: {s}\n", .{@tagName(tag)});
@@ -1043,9 +1049,19 @@ fn acquireNextImage(self: *const Engine, image_index: *u32) !void {
         },
     };
 
-    try switch (vk.acquireNextImageKHR(self.device, self.swapchain, MAX_U64, self.image_available_semaphores[self.current_frame], .null, image_index)) {
+    try switch (vk.acquireNextImageKHR(
+        self.device,
+        self.swapchain,
+        MAX_U64,
+        self.image_available_semaphores[self.current_frame],
+        .null,
+        image_index,
+    )) {
         .success => {},
-        else => error.FailedToAcquireNextImage,
+        else => |tag| blk: {
+            std.debug.print("Error: {s}\n", .{@tagName(tag)});
+            break :blk error.FailedToAcquireNextImage;
+        },
     };
 }
 
@@ -1053,7 +1069,13 @@ fn submitCommandBuffers(self: *Engine, image_index: *u32) !void {
     switch (self.images_in_flight[image_index.*]) {
         .null => {},
         else => {
-            try switch (vk.waitForFences(self.device, 1, &self.images_in_flight[image_index.*], .true, MAX_U64)) {
+            try switch (vk.waitForFences(
+                self.device,
+                1,
+                &self.images_in_flight[image_index.*],
+                .true,
+                MAX_U64,
+            )) {
                 .success => {},
                 else => error.FailedToWaitForFences,
             };
@@ -1076,12 +1098,21 @@ fn submitCommandBuffers(self: *Engine, image_index: *u32) !void {
         .p_signal_semaphores = &signal_semaphores,
     };
 
-    try switch (vk.resetFences(self.device, 1, &self.in_flight_fences[self.current_frame])) {
+    try switch (vk.resetFences(
+        self.device,
+        1,
+        &self.in_flight_fences[self.current_frame],
+    )) {
         .success => {},
         else => error.FailedToResetFences,
     };
 
-    try switch (vk.queueSubmit(self.graphics_queue, 1, &submit_info, self.in_flight_fences[self.current_frame])) {
+    try switch (vk.queueSubmit(
+        self.graphics_queue,
+        1,
+        &submit_info,
+        self.in_flight_fences[self.current_frame],
+    )) {
         .success => {},
         else => error.FailedToSubmitDrawCommandBuffer,
     };
@@ -1103,7 +1134,8 @@ fn submitCommandBuffers(self: *Engine, image_index: *u32) !void {
 }
 
 fn drawFrame(self: *Engine) !void {
-    var image_index: u32 = 0;
+    var image_index: u32 = undefined;
     try self.acquireNextImage(&image_index);
+    std.debug.print("Image Index: {}\n", .{image_index});
     try self.submitCommandBuffers(&image_index);
 }
