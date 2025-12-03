@@ -8,9 +8,9 @@ const vk = @import("../../vulkan/vulkan.zig");
 const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 const vertices = [_]Vertex{
-    .{ .pos = [_]f32{ 0.0, -0.5 }, .color = [_]f32{ 1, 0, 0 } },
-    .{ .pos = [_]f32{ 0.5, 0.5 }, .color = [_]f32{ 0, 1, 0 } },
-    .{ .pos = [_]f32{ -0.5, 0.5 }, .color = [_]f32{ 0, 0, 1 } },
+    .{ .pos = [_]f32{ 0.0, -0.5 }, .color = [_]f32{ 1, 0, 1 } },
+    .{ .pos = [_]f32{ 0.5, 0.5 }, .color = [_]f32{ 1, 1, 0 } },
+    .{ .pos = [_]f32{ -0.5, 0.5 }, .color = [_]f32{ 0, 1, 1 } },
 };
 
 const Engine = @This();
@@ -95,10 +95,10 @@ pub fn init(
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
 
-    self.vertex_buffer = try self.createBuffer();
-    self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer_memory);
-    self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
-    try self.mapMemory(self.vertex_buffer_memory, vertices);
+    self.vertex_buffer = try self.createBuffer(&vertices);
+    self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer);
+    try self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
+    try self.mapMemory(self.vertex_buffer_memory, &vertices);
 
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         self.image_available_semaphores[i] = try self.createSemaphore();
@@ -747,9 +747,14 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 }
 
-fn createBuffer(self: *const Engine) !vk.Buffer {
+fn createVertexBuffer() vk.Buffer {}
+fn createVertexBufferMemory() vk.DeviceMemory {}
+fn createIndexBuffer() vk.Buffer {}
+fn createIndexBufferMemory() vk.DeviceMemory {}
+
+fn createBuffer(self: *const Engine, data: []const Vertex) !vk.Buffer {
     const create_info = vk.BufferCreateInfo{
-        .size = @sizeOf(vertices[0]) * vertices.len,
+        .size = @sizeOf(Vertex) * data.len,
         .usage = .init(.vertex_buffer_bit),
         .sharing_mode = .exclusive,
     };
@@ -777,12 +782,12 @@ fn createBufferMemory(self: *const Engine, buffer: vk.Buffer) !vk.DeviceMemory {
     };
 }
 
-fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropertyFlags) u32 {
+fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropertyFlags) !u32 {
     var mem_props: vk.PhysicalDeviceMemoryProperties = undefined;
     vk.getPhysicalDeviceMemoryProperties(self.physical_device, &mem_props);
 
     for (0..mem_props.memory_type_count) |i| {
-        if (((type_filter & (1 << @truncate(i))) > 0) and (mem_props.memory_types[i].property_flags.bits & props.bits) == props.bits) {
+        if (((type_filter & (@as(@TypeOf(type_filter), 1) << @truncate(i))) > 0) and (mem_props.memory_types[i].property_flags.bits == props.bits)) {
             return @truncate(i);
         }
     }
@@ -791,12 +796,18 @@ fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropert
 }
 
 inline fn bindBufferMemory(self: *const Engine, buffer: vk.Buffer, memory: vk.DeviceMemory, offset: u64) !void {
-    vk.bindBufferMemory(self.device, buffer, memory, offset);
+    try switch (vk.bindBufferMemory(self.device, buffer, memory, offset)) {
+        .success => {},
+        else => error.FailedToBindBufferMemory,
+    };
 }
 
 fn mapMemory(self: *const Engine, memory: vk.DeviceMemory, data: []const Vertex) !void {
     var gpu_ptr: ?*anyopaque = null;
-    vk.mapMemory(self.device, memory, 0, @sizeOf(data[0]) * data.len, &gpu_ptr);
+    try switch (vk.mapMemory(self.device, memory, 0, @sizeOf(Vertex) * data.len, .initEmpty(), &gpu_ptr)) {
+        .success => {},
+        else => error.FailedToMapMemory,
+    };
     defer vk.unmapMemory(self.device, memory);
 
     var gpu_data: [*]@TypeOf(data[0]) = @ptrCast(@alignCast(gpu_ptr));
