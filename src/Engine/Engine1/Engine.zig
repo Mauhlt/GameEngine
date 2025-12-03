@@ -8,9 +8,9 @@ const vk = @import("../../vulkan/vulkan.zig");
 const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 const vertices = [_]Vertex{
-    .{ .pos = .{ 0.0, -0.5 }, .color = .{ 1, 0, 0 } },
-    .{ .pos = .{ 0.5, 0.5 }, .color = .{ 0, 1, 0 } },
-    .{ .pos = .{ -0.5, 0.5 }, .color = .{ 0, 0, 1 } },
+    .{ .pos = [_]f32{ 0.0, -0.5 }, .color = [_]f32{ 1, 0, 0 } },
+    .{ .pos = [_]f32{ 0.5, 0.5 }, .color = [_]f32{ 0, 1, 0 } },
+    .{ .pos = [_]f32{ -0.5, 0.5 }, .color = [_]f32{ 0, 0, 1 } },
 };
 
 const Engine = @This();
@@ -37,6 +37,10 @@ pipeline: vk.Pipeline = .null,
 // commands
 command_pool: vk.CommandPool = .null,
 command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
+vertex_buffer: vk.Buffer = .null,
+vertex_buffer_memory: vk.DeviceMemory = .null,
+index_buffer: vk.Buffer = .null,
+index_buffer_memory: vk.DeviceMemory = .null,
 // sync objects
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
@@ -91,6 +95,11 @@ pub fn init(
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
 
+    self.vertex_buffer = try self.createBuffer();
+    self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer_memory);
+    self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
+    try self.mapMemory(self.vertex_buffer_memory, vertices);
+
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         self.image_available_semaphores[i] = try self.createSemaphore();
         self.render_finished_semaphores[i] = try self.createSemaphore();
@@ -104,6 +113,9 @@ pub fn init(
 
 pub fn deinit(self: *Engine) void {
     self.destroySwapchain();
+
+    vk.destroyBuffer(self.device, self.vertex_buffer, null);
+    vk.freeMemory(self.device, self.vertex_buffer_memory, null);
 
     vk.destroyPipeline(self.device, self.pipeline, null);
     vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
@@ -561,9 +573,10 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
 
     const ss_create_info = [_]vk.PipelineShaderStageCreateInfo{ vss_create_info, fss_create_info };
 
-    var bind_descs = [1]vk.VertexInputBindingDescription{};
-    var attr_descs = [2]vk.VertexInputBindingDescription{};
+    var bind_descs: [1]vk.VertexInputBindingDescription = undefined;
     Vertex.getBindingDescription(&bind_descs);
+
+    var attr_descs: [2]vk.VertexInputAttributeDescription = undefined;
     Vertex.getAttributeDescriptions(&attr_descs);
 
     const vis_create_info = vk.PipelineVertexInputStateCreateInfo{
@@ -734,6 +747,62 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 }
 
+fn createBuffer(self: *const Engine) !vk.Buffer {
+    const create_info = vk.BufferCreateInfo{
+        .size = @sizeOf(vertices[0]) * vertices.len,
+        .usage = .init(.vertex_buffer_bit),
+        .sharing_mode = .exclusive,
+    };
+
+    var buffer: vk.Buffer = .null;
+    return switch (vk.createBuffer(self.device, &create_info, null, &buffer)) {
+        .success => buffer,
+        else => error.FailedToCreateVertexBuffer,
+    };
+}
+
+fn createBufferMemory(self: *const Engine, buffer: vk.Buffer) !vk.DeviceMemory {
+    var mem_reqs: vk.MemoryRequirements = undefined;
+    vk.getBufferMemoryRequirements(self.device, buffer, &mem_reqs);
+
+    const alloc_info = vk.MemoryAllocateInfo{
+        .allocation_size = mem_reqs.size,
+        .memory_type_index = try self.findMemoryType(mem_reqs.memory_type_bits, .initMany(&.{ .host_visible_bit, .host_coherent_bit })),
+    };
+
+    var memory: vk.DeviceMemory = .null;
+    return switch (vk.allocateMemory(self.device, &alloc_info, null, &memory)) {
+        .success => memory,
+        else => error.FailedToAllocateDeviceMemory,
+    };
+}
+
+fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropertyFlags) u32 {
+    var mem_props: vk.PhysicalDeviceMemoryProperties = undefined;
+    vk.getPhysicalDeviceMemoryProperties(self.physical_device, &mem_props);
+
+    for (0..mem_props.memory_type_count) |i| {
+        if (((type_filter & (1 << @truncate(i))) > 0) and (mem_props.memory_types[i].property_flags.bits & props.bits) == props.bits) {
+            return @truncate(i);
+        }
+    }
+
+    return error.FailedToFindSuitableMemoryType;
+}
+
+inline fn bindBufferMemory(self: *const Engine, buffer: vk.Buffer, memory: vk.DeviceMemory, offset: u64) !void {
+    vk.bindBufferMemory(self.device, buffer, memory, offset);
+}
+
+fn mapMemory(self: *const Engine, memory: vk.DeviceMemory, data: []const Vertex) !void {
+    var gpu_ptr: ?*anyopaque = null;
+    vk.mapMemory(self.device, memory, 0, @sizeOf(data[0]) * data.len, &gpu_ptr);
+    defer vk.unmapMemory(self.device, memory);
+
+    var gpu_data: [*]@TypeOf(data[0]) = @ptrCast(@alignCast(gpu_ptr));
+    @memcpy(gpu_data[0..data.len], data);
+}
+
 fn allocCommandBuffers(self: *Engine) !void {
     const alloc_info = vk.CommandBufferAllocateInfo{
         .command_pool = self.command_pool,
@@ -790,7 +859,13 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
     };
     vk.cmdSetScissor(command_buffer, 0, 1, &scissor);
 
-    vk.cmdDraw(command_buffer, 3, 1, 0, 0);
+    vk.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
+
+    const vertex_buffers = [_]vk.Buffer{self.vertex_buffer};
+    const offsets = [_]vk.DeviceSize{0};
+    vk.cmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, &offsets);
+
+    vk.cmdDraw(command_buffer, @truncate(vertices.len), 1, 0, 0);
 
     vk.cmdEndRenderPass(command_buffer);
 

@@ -4,13 +4,13 @@ const Vertex = @This();
 pos: [2]f32,
 color: [3]f32,
 
-pub fn getBindingDescription(bind_desc: *vk.VertexInputBindingDescription) void {
-    bind_desc.binding = 0;
-    bind_desc.stride = @sizeOf(Vertex);
-    bind_desc.input_rate = .vertex;
+pub fn getBindingDescription(bind_desc: *[1]vk.VertexInputBindingDescription) void {
+    bind_desc[0].binding = 0;
+    bind_desc[0].stride = @sizeOf(Vertex);
+    bind_desc[0].input_rate = .vertex;
 }
 
-pub fn getAttributeDescription(attr_desc: *[2]vk.VertexInputAttributeDescription) void {
+pub fn getAttributeDescriptions(attr_desc: *[2]vk.VertexInputAttributeDescription) void {
     attr_desc[0].binding = 0;
     attr_desc[0].location = 0;
     attr_desc[0].format = .r32g32_sfloat;
