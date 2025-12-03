@@ -669,6 +669,20 @@ fn createCommandPool(self: *const Engine) !vk.CommandPool {
     };
 }
 
+fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
+    const alloc_info = vk.CommandBufferAllocateInfo{
+        .command_pool = self.command_pool,
+        .level = .primary,
+        .command_buffer_count = 1,
+    };
+
+    var command_buffer: vk.CommandBuffer = .null;
+    return switch (vk.allocateCommandBuffers(self.device, &alloc_info, &command_buffer)) {
+        .success => command_buffer,
+        else => error.FailedToAllocateCommandBuffer,
+    };
+}
+
 fn allocCommandBuffers(self: *Engine) !void {
     const alloc_info = vk.CommandBufferAllocateInfo{
         .command_pool = self.command_pool,
@@ -678,7 +692,7 @@ fn allocCommandBuffers(self: *Engine) !void {
 
     return switch (vk.allocateCommandBuffers(self.device, &alloc_info, &self.command_buffers)) {
         .success => {},
-        else => error.FailedToAllocateCommandBuffer,
+        else => error.FailedToAllocateCommandBuffers,
     };
 }
 
