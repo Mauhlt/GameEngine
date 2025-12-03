@@ -1,0 +1,23 @@
+const vk = @import("../../vulkan/vulkan.zig");
+const Vertex = @This();
+
+pos: [2]f32,
+color: [3]f32,
+
+pub fn getBindingDescription(bind_desc: *vk.VertexInputBindingDescription) void {
+    bind_desc.binding = 0;
+    bind_desc.stride = @sizeOf(Vertex);
+    bind_desc.input_rate = .vertex;
+}
+
+pub fn getAttributeDescription(attr_desc: *[2]vk.VertexInputAttributeDescription) void {
+    attr_desc[0].binding = 0;
+    attr_desc[0].location = 0;
+    attr_desc[0].format = .r32g32_sfloat;
+    attr_desc[0].offset = @offsetOf(Vertex, "pos");
+
+    attr_desc[1].binding = 0;
+    attr_desc[1].location = 1;
+    attr_desc[1].format = .r32g32b32_sfloat;
+    attr_desc[1].offset = @offsetOf(Vertex, "color");
+}
