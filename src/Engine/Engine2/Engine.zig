@@ -395,9 +395,9 @@ fn createSwapchain(self: *const Engine) !vk.SwapchainKHR {
         .image_array_layers = 1,
         .image_usage = .init(.color_attachment_bit),
 
-        .image_sharing_mode = if (!qfi.isSameFamily()) .concurrent else .exclusive,
-        .queue_family_index_count = if (!qfi.isSameFamily()) 2 else 1,
-        .p_queue_family_indices = &indices,
+        .image_sharing_mode = if (qfi.isSameFamily()) .exclusive else .concurrent,
+        .queue_family_index_count = if (qfi.isSameFamily()) 0 else 2,
+        .p_queue_family_indices = if (qfi.isSameFamily()) null else &indices,
 
         .pre_transform = ssd.capabilities.current_transform,
         .composite_alpha = .opaque_bit,
