@@ -42,7 +42,8 @@ pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // commands
 command_pool: vk.CommandPool = .null,
-command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
+texture_image: vk.Image = .null,
+texture_image_memory: vk.DeviceMemory = .null,
 vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
 index_buffer: vk.Buffer = .null,
@@ -50,6 +51,7 @@ index_buffer_memory: vk.DeviceMemory = .null,
 uniform_buffers: [MAX_FRAMES_IN_FLIGHT]vk.Buffer = [_]vk.Buffer{.null} ** MAX_FRAMES_IN_FLIGHT,
 uniform_buffer_memories: [MAX_FRAMES_IN_FLIGHT]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** MAX_FRAMES_IN_FLIGHT,
 uniform_buffer_maps: [MAX_FRAMES_IN_FLIGHT]?*anyopaque = [_]?*anyopaque{null} ** MAX_FRAMES_IN_FLIGHT,
+command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
 // sync objects
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
@@ -787,6 +789,16 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 }
 
+fn createTextureImage(self: *const Engine) void {
+    _ = self;
+    const image_size = try stbi.load(image);
+    var staging_buffer: vk.Buffer = .null;
+    var staging_buffer_memory: vk.DeviceMemory = .null;
+    try self.createBuffer(image_size, .init(.transfer_src_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &staging_buffer, &staging_buffer_memory);
+
+    var 
+}
+
 fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
     const size = @sizeOf(Vertex) * data.len;
 
@@ -1044,6 +1056,7 @@ fn createFence(self: *const Engine) !vk.Fence {
 fn updateUniformBuffer(self: *const Engine, current_image: u32) !void {
     const current = std.time.nanoTimestamp();
     const time: f32 = @floatFromInt(current - self.start);
+
     const ubo: UBO = .{};
     ubo.model = glm.rotate();
 }
