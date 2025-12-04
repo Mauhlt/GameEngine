@@ -4,6 +4,7 @@ const QFI = @import("QueueFamilyIndices.zig");
 const SSD = @import("SwapchainSupportDetails.zig");
 const Vertex = @import("Vertex.zig");
 const Window = @import("Window.zig");
+const UBO = @import("UniformBufferObject.zig");
 const vk = @import("../../vulkan/vulkan.zig");
 const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
@@ -46,9 +47,9 @@ vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
 index_buffer: vk.Buffer = .null,
 index_buffer_memory: vk.DeviceMemory = .null,
-uniform_buffers: [3]vk.Buffer = [_]vk.Buffer{.null} ** 3,
-uniform_buffer_memories: [3]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** 3,
-uniform_buffer_maps: [3]?*anyopaque = [_]?*anyopaque{null} ** 3,
+uniform_buffers: [MAX_FRAMES_IN_FLIGHT]vk.Buffer = [_]vk.Buffer{.null} ** MAX_FRAMES_IN_FLIGHT,
+uniform_buffer_memories: [MAX_FRAMES_IN_FLIGHT]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** MAX_FRAMES_IN_FLIGHT,
+uniform_buffer_maps: [MAX_FRAMES_IN_FLIGHT]?*anyopaque = [_]?*anyopaque{null} ** MAX_FRAMES_IN_FLIGHT,
 // sync objects
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
@@ -56,6 +57,8 @@ in_flight_fences: [MAX_FRAMES_IN_FLIGHT]vk.Fence = [_]vk.Fence{.null} ** MAX_FRA
 // flags
 current_frame: u32 = 0,
 framebuffer_resized: bool = false,
+start: i128 = 0,
+current: i128 = 0,
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -110,6 +113,8 @@ pub fn init(
         self.render_finished_semaphores[i] = try self.createSemaphore();
         self.in_flight_fences[i] = try self.createFence();
     }
+    // update variables
+    self.start = std.time.nanoTimestamp();
 
     self.window.show();
 
@@ -119,6 +124,10 @@ pub fn init(
 pub fn deinit(self: *Engine) void {
     self.destroySwapchain();
 
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        vk.destroyBuffer(self.device, self.uniform_buffers[i], null);
+        vk.freeMemory(self.device, self.uniform_buffer_memories[i], null);
+    }
     vk.destroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
 
     vk.destroyBuffer(self.device, self.index_buffer, null);
@@ -924,6 +933,19 @@ fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropert
     return error.FailedTOFindSuitableMemoryType;
 }
 
+fn createUniformBuffers(self: *const Engine) void {
+    const size = @sizeOf(UBO);
+
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        try self.createBuffer(size, .init(.uniform_buffer_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &self.uniform_buffers[i], &self.uniform_buffer_memories[i]);
+
+        try switch (vk.mapMemory(self.device, self.uniform_buffer_memories[i], 0, size, .initEmpty(), &self.uniform_buffer_memories[i])) {
+            .success => {},
+            else => error.FailedToMapMemory,
+        };
+    }
+}
+
 fn allocCommandBuffers(self: *Engine) !void {
     const alloc_info = vk.CommandBufferAllocateInfo{
         .command_pool = self.command_pool,
@@ -1019,6 +1041,13 @@ fn createFence(self: *const Engine) !vk.Fence {
     };
 }
 
+fn updateUniformBuffer(self: *const Engine, current_image: u32) !void {
+    const current = std.time.nanoTimestamp();
+    const time: f32 = @floatFromInt(current - self.start);
+    const ubo: UBO = .{};
+    ubo.model = glm.rotate();
+}
+
 fn drawFrame(self: *Engine) !void {
     try switch (vk.waitForFences(self.device, 1, &self.in_flight_fences[self.current_frame], .true, MAX_U64)) {
         .success => {},
@@ -1034,6 +1063,8 @@ fn drawFrame(self: *Engine) !void {
         },
         else => error.FailedToAcquireNextImage,
     };
+
+    updateUniformBuffer(current_frame);
 
     try switch (vk.resetFences(self.device, 1, &self.in_flight_fences[self.current_frame])) {
         .success => {},
