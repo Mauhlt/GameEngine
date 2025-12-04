@@ -12,6 +12,9 @@ const vertices = [_]Vertex{
     .{ .pos = [_]f32{ 0.5, 0.5 }, .color = [_]f32{ 1, 1, 0 } },
     .{ .pos = [_]f32{ -0.5, 0.5 }, .color = [_]f32{ 0, 1, 1 } },
 };
+const indices = [_]u16{
+    0, 1, 2, 2, 3, 0,
+};
 
 const Engine = @This();
 // device
@@ -111,6 +114,9 @@ pub fn init(
 
 pub fn deinit(self: *Engine) void {
     self.destroySwapchain();
+
+    vk.destroyBuffer(self.device, self.index_buffer, null);
+    vk.freeMemory(self.device, self.index_buffer_memory, null);
 
     vk.destroyBuffer(self.device, self.vertex_buffer, null);
     vk.freeMemory(self.device, self.vertex_buffer_memory, null);
@@ -766,6 +772,27 @@ fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
     try self.createBuffer(size, .initMany(&.{ .transfer_src_bit, .vertex_buffer_bit }), .init(.device_local_bit), &self.vertex_buffer, &self.vertex_buffer_memory);
 
     try self.copyBuffer(staging_buffer, self.vertex_buffer, size);
+
+    vk.destroyBuffer(self.device, staging_buffer, null);
+    vk.freeMemory(self.device, staging_buffer_memory, null);
+}
+
+fn createIndexBuffer(self: *Engine, data: []const u16) !void {
+    const size = @sizeOf(u16) * data.len;
+
+    var staging_buffer: vk.Buffer = .null;
+    var staging_buffer_memory: vk.DeviceMemory = .null;
+    try self.createBuffer(size, .init(.transfer_src_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &staging_buffer, &staging_buffer_memory);
+
+    var gpu_ptr: ?*anyopaque = null;
+    vk.mapMemory(self.device, staging_buffer_memory, 0, size, 0, &gpu_ptr);
+    var gpu_indices: [*]u16 = @ptrCast(@alignCast(gpu_ptr));
+    @memcpy(gpu_indices[0..data.len], data);
+    vk.unmapMemory(self.device, staging_buffer_memory);
+
+    try self.createBuffer(size, .initMany(&.{ .transfer_dst_bit, .index_buffer_bit }), .device_local_bit, &self.index_buffer, &self.index_buffer_memory);
+
+    try self.copyBuffer(staging_buffer, self.index_buffer, size);
 
     vk.destroyBuffer(self.device, staging_buffer, null);
     vk.freeMemory(self.device, staging_buffer_memory, null);
