@@ -8,9 +8,10 @@ const vk = @import("../../vulkan/vulkan.zig");
 const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 const vertices = [_]Vertex{
-    .{ .pos = [_]f32{ 0.0, -0.5 }, .color = [_]f32{ 1, 0, 1 } },
-    .{ .pos = [_]f32{ 0.5, 0.5 }, .color = [_]f32{ 1, 1, 0 } },
-    .{ .pos = [_]f32{ -0.5, 0.5 }, .color = [_]f32{ 0, 1, 1 } },
+    .{ .pos = [_]f32{ -0.5, -0.5 }, .color = [_]f32{ 1, 0, 0 } },
+    .{ .pos = [_]f32{ 0.5, -0.5 }, .color = [_]f32{ 0, 1, 0 } },
+    .{ .pos = [_]f32{ 0.5, 0.5 }, .color = [_]f32{ 0, 0, 1 } },
+    .{ .pos = [_]f32{ -0.5, 0.5 }, .color = [_]f32{ 1, 1, 1 } },
 };
 const indices = [_]u16{
     0, 1, 2, 2, 3, 0,
@@ -35,6 +36,7 @@ swapchain_image_views: [3]vk.ImageView = [_]vk.ImageView{.null} ** 3,
 swapchain_framebuffers: [3]vk.Framebuffer = [_]vk.Framebuffer{.null} ** 3,
 // pipeline
 render_pass: vk.RenderPass = .null,
+descriptor_set_layout: vk.DescriptorSetLayout = .null,
 pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // commands
@@ -44,6 +46,9 @@ vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
 index_buffer: vk.Buffer = .null,
 index_buffer_memory: vk.DeviceMemory = .null,
+uniform_buffers: [3]vk.Buffer = [_]vk.Buffer{.null} ** 3,
+uniform_buffer_memories: [3]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** 3,
+uniform_buffer_maps: [3]?*anyopaque = [_]?*anyopaque{null} ** 3,
 // sync objects
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
@@ -87,20 +92,19 @@ pub fn init(
     try self.getSwapchainImages();
     for (0..self.swapchain_n_images) |i|
         self.swapchain_image_views[i] = try self.createSwapchainImageView(i);
-
     self.render_pass = try self.createRenderPass();
     for (0..self.swapchain_n_images) |i|
         self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
-
+    // pipeline
+    self.descriptor_set = try self.createDescriptorSetLayout();
     self.pipeline_layout = try self.createPipelineLayout();
     self.pipeline = try self.createGraphicsPipeline(allo);
-
+    // buffers
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
-
     try self.createVertexBuffer(&vertices);
-    // try self.createIndexBuffer(&indices);
-
+    try self.createIndexBuffer(&indices);
+    // sync objects
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         self.image_available_semaphores[i] = try self.createSemaphore();
         self.render_finished_semaphores[i] = try self.createSemaphore();
@@ -114,6 +118,8 @@ pub fn init(
 
 pub fn deinit(self: *Engine) void {
     self.destroySwapchain();
+
+    vk.destroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
 
     vk.destroyBuffer(self.device, self.index_buffer, null);
     vk.freeMemory(self.device, self.index_buffer_memory, null);
@@ -535,10 +541,31 @@ fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
     };
 }
 
+fn createDescriptorSetLayout(self: *const Engine) !vk.DescriptorSetLayout {
+    const ubo_layout_binding = vk.DescriptorSetLayoutBinding{
+        .binding = 0,
+        .descriptor_type = .uniform_buffer,
+        .descriptor_count = 1,
+        .stage_flags = .init(.vertex_bit),
+        .p_immutable_samplers = null,
+    };
+
+    const create_info = vk.DescriptorSetLayoutCreateInfo{
+        .binding_count = 1,
+        .p_bindings = &ubo_layout_binding,
+    };
+
+    var descriptor_set_layout: vk.DescriptorSetLayout = .null;
+    return switch (vk.createDescriptorSetLayout(self.device, &create_info, null, &descriptor_set_layout)) {
+        .success => descriptor_set_layout,
+        else => error.FailedToCreateDescriptorSetLayout,
+    };
+}
+
 fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
     const create_info = vk.PipelineLayoutCreateInfo{
-        .set_layout_count = 0,
-        .p_set_layouts = null,
+        .set_layout_count = 1,
+        .p_set_layouts = &self.descriptor_set_layout,
         .push_constant_range_count = 0,
         .p_push_constant_ranges = null,
     };
@@ -764,8 +791,8 @@ fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
             .success => {},
             else => error.FailedToMapMemory,
         };
-        var gpu_data: [*]Vertex = @ptrCast(@alignCast(gpu_ptr));
-        @memcpy(gpu_data[0..data.len], data);
+        var gpu_vertices: [*]Vertex = @ptrCast(@alignCast(gpu_ptr));
+        @memcpy(gpu_vertices[0..data.len], data);
         vk.unmapMemory(self.device, staging_buffer_memory);
     }
 
@@ -784,13 +811,18 @@ fn createIndexBuffer(self: *Engine, data: []const u16) !void {
     var staging_buffer_memory: vk.DeviceMemory = .null;
     try self.createBuffer(size, .init(.transfer_src_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &staging_buffer, &staging_buffer_memory);
 
-    var gpu_ptr: ?*anyopaque = null;
-    vk.mapMemory(self.device, staging_buffer_memory, 0, size, 0, &gpu_ptr);
-    var gpu_indices: [*]u16 = @ptrCast(@alignCast(gpu_ptr));
-    @memcpy(gpu_indices[0..data.len], data);
-    vk.unmapMemory(self.device, staging_buffer_memory);
+    {
+        var gpu_ptr: ?*anyopaque = null;
+        try switch (vk.mapMemory(self.device, staging_buffer_memory, 0, size, .initEmpty(), &gpu_ptr)) {
+            .success => {},
+            else => error.FailedToMapMemory,
+        };
+        var gpu_indices: [*]u16 = @ptrCast(@alignCast(gpu_ptr));
+        @memcpy(gpu_indices[0..data.len], data);
+        vk.unmapMemory(self.device, staging_buffer_memory);
+    }
 
-    try self.createBuffer(size, .initMany(&.{ .transfer_dst_bit, .index_buffer_bit }), .device_local_bit, &self.index_buffer, &self.index_buffer_memory);
+    try self.createBuffer(size, .initMany(&.{ .transfer_dst_bit, .index_buffer_bit }), .init(.device_local_bit), &self.index_buffer, &self.index_buffer_memory);
 
     try self.copyBuffer(staging_buffer, self.index_buffer, size);
 
@@ -953,8 +985,9 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
     const vertex_buffers = [_]vk.Buffer{self.vertex_buffer};
     const offsets = [_]vk.DeviceSize{0};
     vk.cmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, &offsets);
-
-    vk.cmdDraw(command_buffer, @truncate(vertices.len), 1, 0, 0);
+    vk.cmdBindIndexBuffer(command_buffer, self.index_buffer, 0, .uint16);
+    vk.cmdDrawIndexed(command_buffer, @as(u32, @truncate(indices.len)), 1, 0, 0, 0);
+    // vk.cmdDraw(command_buffer, @truncate(vertices.len), 1, 0, 0);
 
     vk.cmdEndRenderPass(command_buffer);
 
