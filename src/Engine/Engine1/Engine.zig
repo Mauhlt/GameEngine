@@ -95,10 +95,8 @@ pub fn init(
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
 
-    self.vertex_buffer = try self.createBuffer(&vertices);
-    self.vertex_buffer_memory = try self.createBufferMemory(self.vertex_buffer);
-    try self.bindBufferMemory(self.vertex_buffer, self.vertex_buffer_memory, 0);
-    try self.mapMemory(self.vertex_buffer_memory, &vertices);
+    try self.createVertexBuffer(&vertices);
+    // try self.createIndexBuffer(&indices);
 
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         self.image_available_semaphores[i] = try self.createSemaphore();
@@ -747,71 +745,124 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 }
 
-fn createVertexBuffer() vk.Buffer {}
-fn createVertexBufferMemory() vk.DeviceMemory {}
-fn createIndexBuffer() vk.Buffer {}
-fn createIndexBufferMemory() vk.DeviceMemory {}
+fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
+    const size = @sizeOf(Vertex) * data.len;
 
-fn createBuffer(self: *const Engine, data: []const Vertex) !vk.Buffer {
+    var staging_buffer: vk.Buffer = .null;
+    var staging_buffer_memory: vk.DeviceMemory = .null;
+    try self.createBuffer(size, .init(.transfer_src_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &staging_buffer, &staging_buffer_memory);
+
+    {
+        var gpu_ptr: ?*anyopaque = null;
+        try switch (vk.mapMemory(self.device, staging_buffer_memory, 0, size, .initEmpty(), &gpu_ptr)) {
+            .success => {},
+            else => error.FailedToMapMemory,
+        };
+        var gpu_data: [*]Vertex = @ptrCast(@alignCast(gpu_ptr));
+        @memcpy(gpu_data[0..data.len], data);
+        vk.unmapMemory(self.device, staging_buffer_memory);
+    }
+
+    try self.createBuffer(size, .initMany(&.{ .transfer_src_bit, .vertex_buffer_bit }), .init(.device_local_bit), &self.vertex_buffer, &self.vertex_buffer_memory);
+
+    try self.copyBuffer(staging_buffer, self.vertex_buffer, size);
+
+    vk.destroyBuffer(self.device, staging_buffer, null);
+    vk.freeMemory(self.device, staging_buffer_memory, null);
+}
+
+fn createBuffer(self: *Engine, size: vk.DeviceSize, usage: vk.BufferUsageFlags, props: vk.MemoryPropertyFlags, buffer: *vk.Buffer, memory: *vk.DeviceMemory) !void {
     const create_info = vk.BufferCreateInfo{
-        .size = @sizeOf(Vertex) * data.len,
-        .usage = .init(.vertex_buffer_bit),
+        .size = size,
+        .usage = usage,
         .sharing_mode = .exclusive,
     };
 
-    var buffer: vk.Buffer = .null;
-    return switch (vk.createBuffer(self.device, &create_info, null, &buffer)) {
-        .success => buffer,
-        else => error.FailedToCreateVertexBuffer,
+    try switch (vk.createBuffer(self.device, &create_info, null, buffer)) {
+        .success => {},
+        else => error.FailedToCreateBuffer,
     };
-}
 
-fn createBufferMemory(self: *const Engine, buffer: vk.Buffer) !vk.DeviceMemory {
-    var mem_reqs: vk.MemoryRequirements = undefined;
-    vk.getBufferMemoryRequirements(self.device, buffer, &mem_reqs);
+    var mem_reqs: vk.MemoryRequirements = .{};
+    vk.getBufferMemoryRequirements(self.device, buffer.*, &mem_reqs);
 
     const alloc_info = vk.MemoryAllocateInfo{
         .allocation_size = mem_reqs.size,
-        .memory_type_index = try self.findMemoryType(mem_reqs.memory_type_bits, .initMany(&.{ .host_visible_bit, .host_coherent_bit })),
+        .memory_type_index = try self.findMemoryType(mem_reqs.memory_type_bits, props),
     };
 
-    var memory: vk.DeviceMemory = .null;
-    return switch (vk.allocateMemory(self.device, &alloc_info, null, &memory)) {
-        .success => memory,
-        else => error.FailedToAllocateDeviceMemory,
+    try switch (vk.allocateMemory(self.device, &alloc_info, null, memory)) {
+        .success => {},
+        else => error.FailedToAllocateBufferMemory,
     };
-}
 
-fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropertyFlags) !u32 {
-    var mem_props: vk.PhysicalDeviceMemoryProperties = undefined;
-    vk.getPhysicalDeviceMemoryProperties(self.physical_device, &mem_props);
-
-    for (0..mem_props.memory_type_count) |i| {
-        if (((type_filter & (@as(@TypeOf(type_filter), 1) << @truncate(i))) > 0) and (mem_props.memory_types[i].property_flags.bits == props.bits)) {
-            return @truncate(i);
-        }
-    }
-
-    return error.FailedToFindSuitableMemoryType;
-}
-
-inline fn bindBufferMemory(self: *const Engine, buffer: vk.Buffer, memory: vk.DeviceMemory, offset: u64) !void {
-    try switch (vk.bindBufferMemory(self.device, buffer, memory, offset)) {
+    try switch (vk.bindBufferMemory(self.device, buffer.*, memory.*, 0)) {
         .success => {},
         else => error.FailedToBindBufferMemory,
     };
 }
 
-fn mapMemory(self: *const Engine, memory: vk.DeviceMemory, data: []const Vertex) !void {
-    var gpu_ptr: ?*anyopaque = null;
-    try switch (vk.mapMemory(self.device, memory, 0, @sizeOf(Vertex) * data.len, .initEmpty(), &gpu_ptr)) {
-        .success => {},
-        else => error.FailedToMapMemory,
+fn copyBuffer(self: *const Engine, src_buffer: vk.Buffer, dst_buffer: vk.Buffer, size: vk.DeviceSize) !void {
+    const alloc_info = vk.CommandBufferAllocateInfo{
+        .level = .primary,
+        .command_pool = self.command_pool,
+        .command_buffer_count = 1,
     };
-    defer vk.unmapMemory(self.device, memory);
 
-    var gpu_data: [*]@TypeOf(data[0]) = @ptrCast(@alignCast(gpu_ptr));
-    @memcpy(gpu_data[0..data.len], data);
+    var command_buffer: vk.CommandBuffer = .null;
+    try switch (vk.allocateCommandBuffers(self.device, &alloc_info, &command_buffer)) {
+        .success => {},
+        else => error.FailedToAllocateCommandBuffers,
+    };
+
+    const begin_info = vk.CommandBufferBeginInfo{
+        .flags = .init(.one_time_submit_bit),
+    };
+
+    try switch (vk.beginCommandBuffer(command_buffer, &begin_info)) {
+        .success => {},
+        else => error.FailedToBeginCommandBuffer,
+    };
+
+    const copy_region = vk.BufferCopy{
+        .size = size,
+    };
+    vk.cmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
+
+    try switch (vk.endCommandBuffer(command_buffer)) {
+        .success => {},
+        else => error.FailedToEndCommandBuffer,
+    };
+
+    const submit_info = vk.SubmitInfo{
+        .command_buffer_count = 1,
+        .p_command_buffers = &command_buffer,
+    };
+
+    try switch (vk.queueSubmit(self.graphics_queue, 1, &submit_info, .null)) {
+        .success => {},
+        else => error.FailedToSubmitQueue,
+    };
+
+    try switch (vk.queueWaitIdle(self.graphics_queue)) {
+        .success => {},
+        else => error.FailedToIdleQueue,
+    };
+
+    vk.freeCommandBuffers(self.device, self.command_pool, 1, &command_buffer);
+}
+
+fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropertyFlags) !u32 {
+    var mem_props: vk.PhysicalDeviceMemoryProperties = .{};
+    vk.getPhysicalDeviceMemoryProperties(self.physical_device, &mem_props);
+
+    for (0..mem_props.memory_type_count) |i| {
+        if (((type_filter & (@as(u32, 1) << @truncate(i))) > 0) and ((mem_props.memory_types[i].property_flags.bits & props.bits) == props.bits)) {
+            return @truncate(i);
+        }
+    }
+
+    return error.FailedTOFindSuitableMemoryType;
 }
 
 fn allocCommandBuffers(self: *Engine) !void {
