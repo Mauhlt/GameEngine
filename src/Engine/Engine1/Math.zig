@@ -95,3 +95,50 @@ pub fn matMul4RowSIMD(a: [4][4]f32, b: [4][4]f32) [4][4]f32 {
     const bc2: V4 = .{ b[0][2], b[1][2], b[2][2], b[3][2] };
     const bc3: V4 = .{ b[0][3], b[1][3], b[2][3], b[3][3] };
 }
+
+pub const Vec4 = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+    w: f32,
+};
+
+pub const Mat4 = struct {
+    // col-major order
+    cols: [4]Vec4,
+
+    pub fn identity() Mat4 {
+        return .{
+            .cols = .{
+                .{ .x = 1, .y = 0, .z = 0, .w = 0 },
+                .{ .x = 0, .y = 1, .z = 0, .w = 0 },
+                .{ .x = 0, .y = 0, .z = 1, .w = 0 },
+                .{ .x = 0, .y = 0, .z = 0, .w = 1 },
+            },
+        };
+    }
+
+    pub fn zero() Mat4 {
+        return .{
+            .cols = .{
+                .{ .x = 0, .y = 0, .z = 0, .w = 0 },
+                .{ .x = 0, .y = 0, .z = 0, .w = 0 },
+                .{ .x = 0, .y = 0, .z = 0, .w = 0 },
+                .{ .x = 0, .y = 0, .z = 0, .w = 0 },
+            },
+        };
+    }
+
+    pub fn fromCols(c0: Vec4, c1: Vec4, c2: Vec4, c3: Vec4) Mat4 {
+        return .{ .cols = .{ c0, c1, c2, c3 } };
+    }
+
+    pub fn at(self: *const Mat4, col: usize, row: usize) f32 {
+        return switch (row) {
+            0 => self.cols[col].x,
+            1 => self.cols[col].y,
+            2 => self.cols[col].z,
+            3 => self.cols[col].w,
+        };
+    }
+};
