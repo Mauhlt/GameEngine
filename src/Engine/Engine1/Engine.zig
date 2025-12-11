@@ -5,6 +5,10 @@ const SSD = @import("SwapchainSupportDetails.zig");
 const Vertex = @import("Vertex.zig");
 const Window = @import("Window.zig");
 const UBO = @import("UniformBufferObject.zig");
+// Math
+const Vec = @import("Math/Vec.zig");
+const Mat = @import("Math/Mat.zig");
+// Vulkan
 const vk = @import("../../vulkan/vulkan.zig");
 
 const MAX_U64 = std.math.maxInt(u64);
@@ -1096,7 +1100,8 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) !void {
     const time: f32 = @floatFromInt(current - self.start);
 
     const ubo: UBO = .{};
-    ubo.model = glm.rotate();
+    ubo.model = Mat.Mat4.eye();
+    ubo.view = Vec.Vec3.new([_]f32{ 2, 2, 2 });
 }
 
 fn drawFrame(self: *Engine) !void {
