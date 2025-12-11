@@ -140,14 +140,14 @@ pub fn persp(comptime T: type, fovy: T, aspect: T, zNear: T, zFar: T) createMatr
     };
 }
 
-test "Matrix Math" {
-    const data1: Mat3 = .{
-        .data = .{
-            .{ 1, 4, 7 },
-            .{ 2, 5, 8 },
-            .{ 3, 6, 9 },
-        },
-    };
-    const data2: Mat3 = .eye();
-    std.debug.print();
-}
+// test "Matrix Math" {
+//     const data1: Mat3 = .{
+//         .data = .{
+//             .{ 1, 4, 7 },
+//             .{ 2, 5, 8 },
+//             .{ 3, 6, 9 },
+//         },
+//     };
+//     const data2: Mat3 = .eye();
+//     std.debug.print();
+// }

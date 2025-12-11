@@ -18,6 +18,10 @@ fn createVector(comptime N: usize, comptime T: type) type {
 
         data: [N]T = [_]T{0} ** N,
 
+        pub fn new(data: [N]T) Self {
+            return .{ .data = data };
+        }
+
         pub fn x() Self {
             var self = Self.zero();
             self.data[0] = 1;
