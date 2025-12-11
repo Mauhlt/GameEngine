@@ -6,6 +6,7 @@ const Vertex = @import("Vertex.zig");
 const Window = @import("Window.zig");
 const UBO = @import("UniformBufferObject.zig");
 const vk = @import("../../vulkan/vulkan.zig");
+
 const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 const vertices = [_]Vertex{
@@ -51,6 +52,8 @@ index_buffer_memory: vk.DeviceMemory = .null,
 uniform_buffers: [MAX_FRAMES_IN_FLIGHT]vk.Buffer = [_]vk.Buffer{.null} ** MAX_FRAMES_IN_FLIGHT,
 uniform_buffer_memories: [MAX_FRAMES_IN_FLIGHT]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** MAX_FRAMES_IN_FLIGHT,
 uniform_buffer_maps: [MAX_FRAMES_IN_FLIGHT]?*anyopaque = [_]?*anyopaque{null} ** MAX_FRAMES_IN_FLIGHT,
+descriptor_pool: vk.DescriptorPool = .null,
+descriptor_sets: [MAX_FRAMES_IN_FLIGHT]vk.DescriptorSet = [_]vk.DescriptorSet{.null} ** MAX_FRAMES_IN_FLIGHT,
 command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
 // sync objects
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
@@ -125,6 +128,9 @@ pub fn init(
 
 pub fn deinit(self: *Engine) void {
     self.destroySwapchain();
+
+    vk.destroyDescriptorPool(self.device, self.decriptor_pool, null);
+    vk.destroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
 
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         vk.destroyBuffer(self.device, self.uniform_buffers[i], null);
@@ -945,7 +951,7 @@ fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropert
     return error.FailedTOFindSuitableMemoryType;
 }
 
-fn createUniformBuffers(self: *const Engine) void {
+fn createUniformBuffers(self: *const Engine) !void {
     const size = @sizeOf(UBO);
 
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
@@ -956,6 +962,38 @@ fn createUniformBuffers(self: *const Engine) void {
             else => error.FailedToMapMemory,
         };
     }
+}
+
+fn createDescriptorPool(self: *const Engine) !void {
+    const pool_size = vk.DescriptorPoolSize{
+        .descriptor_count = MAX_FRAMES_IN_FLIGHT,
+    };
+
+    const create_info = vk.DescriptorPoolCreateInfo{
+        .pool_size_count = 1,
+        .p_pool_sizes = &pool_size,
+        .max_sets = MAX_FRAMES_IN_FLIGHT,
+    };
+
+    var pool: vk.DescriptorPool = .null;
+    return switch (vk.createDescriptorPool(self.device, &create_info, null, &pool)) {
+        .success => pool,
+        else => error.FailedToCreateDescriptorPool,
+    };
+}
+
+fn createDescriptorSets(self: *Engine) !void {
+    var layouts: [MAX_FRAMES_IN_FLIGHT]vk.DescriptorSetLayout = undefined;
+    const alloc_info = vk.DescriptorSetAllocateInfo{
+        .descriptor_pool = self.descriptor_pool,
+        .descriptor_set_count = MAX_FRAMES_IN_FLIGHT,
+        .p_set_layouts = &layouts,
+    } 
+
+    try switch (vk.allocateDescriptorSets(self.device, &alloc_info, &self.descriptor_sets)) {
+        .success => {},
+        else => error.FailedToAllocateDescriptorSets,
+    };
 }
 
 fn allocCommandBuffers(self: *Engine) !void {

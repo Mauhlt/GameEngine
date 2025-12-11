@@ -120,6 +120,97 @@ fn saveFile(io: Io, data: []const u8, name: []const u8) !void {
     - comms along chain of readers = more efficient
 
 # Vulkan:
+## Instance: connects app to vulkan library + app drivers 
+## Vulkan Pattern:
+- pointer to create info struct 
+- pointer to custom allocator 
+- ponter to variable storing handle to object 
+Cleanup all memory allocated to gpu at end 
+## Validation Layers:
+- checks values of params against specs to detect misuse 
+- tracks creation + destruction of objects 
+- checks thread safety by logging origination of calls 
+- logs every call + parameter 
+- traces vulkan calls for profiles + replays 
+## Physical Devices + Queue Families 
+- select a gpu or multiple 
+- check device suitability via querying device details
+- Queue Families
+    - different queues for different gpus 
+    - check which are supported by device + which support commands 
+## Logical Device: 
+- set up logical device to interface with device
+- grab device specific extensions 
+- VK_KHR_swapchain = allows presenting rendered images from device to windows 
+- device queues auto cleaned after use 
+## Surface: 
+- vulkan = platform agnostic API = no direct interface to window system 
+- WSI = window system integration 
+- if offscreen rendering - don't use window system/surfaces 
+## Swap chain 
+- vulkan =/= default framebuffer 
+swapchain:
+- infrastructure to build the framebuffers 
+- chain of images waiting to be presented to screen 
+- synchronize presentation of images with refresh rate of screen 
+## Image Views:
+- image view = literal view into an image 
+- describes accessing the miage + partitioning + how to treat textures 
+## Graphics Pipeline:
+- Vertex Buffer = contains raw vertices 
+- Index Buffer = contains indices of vertices/data to repeat
+- Input Assembler = collects row vertex data from buffers
+- Vertex Shader = runs for every vertex - applies transformations to vertex from model to screen space
+- Tesselation = subdividets geometry based on rules to improve mesh quality
+- Geometry Shader = runs on every primitive = discard or improve them = more flexible but slower
+- Rasterization = discritizes primitives into fragments/pixels
+- Fragment Shader = determines which framebuffer the fragments are written to and which fragments survive
+- Color Blending = mixes fragments that map to same pixel
+- Framebuffer = stores data to be presented
+- fixed-function stages = tweak operations using parameters
+- programmable function stages = upload your own code to apply operations
+- Vulkan = immutable pipeline = recreate pipeline from scratch to change shaders or bind framebuffers
+## Shader Modules:
+- SPIR-V = bytecode fromat that compiles to gpu machine code 
+- Vertex Shader = processes vertices = takes attributes like model/position/color/normal/texture coords as inputs 
+- clip coordinate = 4d vector from vertex shader - turned to normalized device coordinate (homogeneous coordinates) = map to framebuffer
+- Fragement Shader = processes fragments
+## Fixed Functions:
+- older apis provide default state 
+- vulkan requires explicit control 
+## Render Passes: 
+- need to inform vulkan about framebuffer attachments in render pass 
+## Swapchain Recreation:
+- recreate swapchain when window size or expected immutable features changes 
+## Vertex Buffer: 
+- replaces hardcoded vertex data with vertex buffer in memory 
+- array of vertices specified within buffer
+- can interleave vertex attributes or have tham as separate arrays
+- binding descriptions = rate to load data from memory = # of bytes + stride
+- atribute descriptions = describes how to extract vertex attribute from vertex data
+    - binding = which binding the per-vertex data comes from 
+    - location = location directive of input vertex shader 
+    - 0 = position = has format 
+    - format parameter: float, vec2, vec3, vec4
+    - can use more channels than described in shader but they will be discarded 
+- pipeline vertex input = allows pipeline to know what bindings + attributes to look out for
+## Vertex Buffer Creation:
+- buffers = regions of memory used for storing data read by gpu 
+- buffers do not auto allocate memory for themselves 
+- buffers cand be shared or owned by single queue 
+## Staging Buffer:
+- accessing memory from cpu directly onto gpu is not optimal 
+- cpu -> gpu -> gpu is more optimal 
+- vk.memory_property_device_local_bit
+- use transfer buffer
+## Index Buffer:
+- real world has vertices shadred between triangles 
+## Uniform Buffers: 
+- what about global variables? 
+- resource descriptors = freely access resources like buffers + images 
+- specify set layout during pipeline creation 
+- allocate sets using a pool
+- bind descriptor set during rendering
 
 # Networking:
 
