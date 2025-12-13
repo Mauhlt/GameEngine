@@ -8,20 +8,16 @@ const UBO = @import("UniformBufferObject.zig");
 // Math
 const Vec = @import("Math/Vec.zig");
 const Mat = @import("Math/Mat.zig");
+// Model
+const Tri = @import("Models/Triangle.zig");
 // Vulkan
 const vk = @import("../../vulkan/vulkan.zig");
 
+// Abstract the engine its own file/dir
+// Abstract tho app into its own file/dir
+
 const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
-const vertices = [_]Vertex{
-    .{ .pos = [_]f32{ -0.5, -0.5 }, .color = [_]f32{ 1, 0, 0 } },
-    .{ .pos = [_]f32{ 0.5, -0.5 }, .color = [_]f32{ 0, 1, 0 } },
-    .{ .pos = [_]f32{ 0.5, 0.5 }, .color = [_]f32{ 0, 0, 1 } },
-    .{ .pos = [_]f32{ -0.5, 0.5 }, .color = [_]f32{ 1, 1, 1 } },
-};
-const indices = [_]u16{
-    0, 1, 2, 2, 3, 0,
-};
 
 const Engine = @This();
 // device
@@ -68,6 +64,9 @@ current_frame: u32 = 0,
 framebuffer_resized: bool = false,
 start: i128 = 0,
 current: i128 = 0,
+// models
+vertices: []Vertex = undefined,
+indices: []u16 = undefined,
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -77,6 +76,10 @@ pub fn init(
 ) !Engine {
     // _ = allo;
     var self: Engine = .{};
+
+    // load model
+    self.vertices = try allo.dupe(Vertex, @ptrCast(&Tri.vertices));
+    self.indices = try allo.dupe(u16, @ptrCast(Tri.indices));
 
     // required extensions
     const ries = [_][*:0]const u8{
@@ -107,30 +110,37 @@ pub fn init(
     self.render_pass = try self.createRenderPass();
     for (0..self.swapchain_n_images) |i|
         self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
+
     // pipeline
     self.descriptor_set = try self.createDescriptorSetLayout();
     self.pipeline_layout = try self.createPipelineLayout();
     self.pipeline = try self.createGraphicsPipeline(allo);
+
     // buffers
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
     try self.createVertexBuffer(&vertices);
     try self.createIndexBuffer(&indices);
+
     // sync objects
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         self.image_available_semaphores[i] = try self.createSemaphore();
         self.render_finished_semaphores[i] = try self.createSemaphore();
         self.in_flight_fences[i] = try self.createFence();
     }
+
     // update variables
     self.start = std.time.nanoTimestamp();
-
     self.window.show();
 
     return self;
 }
 
-pub fn deinit(self: *Engine) void {
+pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
+    // model
+    allo.free(self.vertices);
+    allo.free(self.indices);
+
     self.destroySwapchain();
 
     vk.destroyDescriptorPool(self.device, self.decriptor_pool, null);
@@ -1062,7 +1072,7 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
     const offsets = [_]vk.DeviceSize{0};
     vk.cmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, &offsets);
     vk.cmdBindIndexBuffer(command_buffer, self.index_buffer, 0, .uint16);
-    vk.cmdDrawIndexed(command_buffer, @as(u32, @truncate(indices.len)), 1, 0, 0, 0);
+    vk.cmdDrawIndexed(command_buffer, @as(u32, @truncate(self.indices.len)), 1, 0, 0, 0);
     // vk.cmdDraw(command_buffer, @truncate(vertices.len), 1, 0, 0);
 
     vk.cmdEndRenderPass(command_buffer);
@@ -1095,13 +1105,18 @@ fn createFence(self: *const Engine) !vk.Fence {
     };
 }
 
-fn updateUniformBuffer(self: *const Engine, current_image: u32) !void {
+fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     const current = std.time.nanoTimestamp();
     const time: f32 = @floatFromInt(current - self.start);
 
     const ubo: UBO = .{};
-    ubo.model = Mat.Mat4.eye();
-    ubo.view = Vec.Vec3.new([_]f32{ 2, 2, 2 });
+    ubo.model = Mat.rotate(Mat.Mat4.eye(), time * std.math.degreesToRadians(@as(f32, 90.0)), Vec.Vec3.z());
+    ubo.view = Mat.lookAt(Vec.Vec3.init(2), Vec.Vec3.init(0), Vec.Vec3.z());
+    ubo.proj = Mat.persp(f32, std.math.degreesToRadians(@as(f32, 45.0)), @as(f32, @floatFromInt(self.swapchain_extent.width)) / @as(f32, @floatFromInt(self.swapchain_extent.height)), 0.1, 0.5);
+    ubo.proj[1][1] *= -1;
+
+    var new_map: [*]UBO = @ptrCast(@alignCast(self.uniform_buffer_maps[current_image]));
+    @memcpy(new_map[0..1], ubo);
 }
 
 fn drawFrame(self: *Engine) !void {
@@ -1120,7 +1135,7 @@ fn drawFrame(self: *Engine) !void {
         else => error.FailedToAcquireNextImage,
     };
 
-    updateUniformBuffer(current_frame);
+    updateUniformBuffer(self.current_frame);
 
     try switch (vk.resetFences(self.device, 1, &self.in_flight_fences[self.current_frame])) {
         .success => {},
@@ -1137,6 +1152,7 @@ fn drawFrame(self: *Engine) !void {
     const wait_semaphores = [_]vk.Semaphore{self.image_available_semaphores[self.current_frame]};
     const wait_stages = [_]vk.PipelineStageFlags{.init(.color_attachment_output_bit)};
     const signal_semaphores = [_]vk.Semaphore{self.render_finished_semaphores[self.current_frame]};
+
     const submit_info = vk.SubmitInfo{
         .wait_semaphore_count = @truncate(wait_semaphores.len),
         .p_wait_semaphores = &wait_semaphores,
