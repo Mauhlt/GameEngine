@@ -190,16 +190,16 @@ fn Quaternion(comptime T: type) type {
             } });
         }
 
-        pub fn mul(r: @This(), s: @This()) @This() {
+        pub fn mul(r: @This(), s: @TypeOf(r)) @TypeOf(r) {
             // associative but not commutative
             // const t0 = r.data[0] * s.data[0] - r.data[1] * s.data[1] - r.data[2] * s.data[2] - r.data[3] * s.data[3];
             // const t1 = r.data[0] * s.data[1] + r.data[1] * s.data[0] - r.data[2] * s.data[3] + r.data[3] * s.data[2];
             // const t2 = r.data[0] * s.data[2] + r.data[1] * s.data[3] + r.data[2] * s.data[0] - r.data[3] * s.data[1];
             // const t3 = r.data[0] * s.data[3] - r.data[1] * s.data[2] + r.data[2] * s.data[1] + r.data[3] * s.data[0];
-            const c0 = @as(@Vector(4, T), @splat(r.data[0])) * @as(@Vector(4, T), s.data);
-            const c1 = @as(@Vector(4, T), @splat(r.data[1])) * @as(@Vector(4, T), .{ s.data[1], s.data[0], s.data[3], s.data[2] });
-            const c2 = @as(@Vector(4, T), @splat(r.data[2])) * @as(@Vector(4, T), .{ s.data[2], s.data[3], s.data[0], s.data[1] });
-            const c3 = @as(@Vector(4, T), @splat(r.data[3])) * @as(@Vector(4, T), .{ s.data[3], s.data[2], s.data[1], s.data[0] });
+            const c0 = V4.init(r.w).mulV(s.v4FromQuat());
+            const c1 = V4.init(r.x) * @as(@Vector(4, T), .{ s.data[1], s.data[0], s.data[3], s.data[2] });
+            const c2 = V4.init(r.y) * @as(@Vector(4, T), .{ s.data[2], s.data[3], s.data[0], s.data[1] });
+            const c3 = V4.init(r.z) * @as(@Vector(4, T), .{ s.data[3], s.data[2], s.data[1], s.data[0] });
             const t0 = c0[0] - c1[0] - c2[0] - c3[0];
             const t1 = c0[1] + c1[1] - c2[1] + c3[1];
             const t2 = c0[2] + c1[2] + c2[2] - c3[2];

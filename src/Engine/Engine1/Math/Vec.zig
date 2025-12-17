@@ -11,7 +11,7 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
     }
 
     return struct {
-        data: [N]T = [_]T{0} ** N,
+        data: [N]T = [_]T{0} ** N, // x, y, z, w
 
         pub fn x() @This() {
             return .{
@@ -20,34 +20,23 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
         }
 
         pub fn y() @This() {
-            return .{
-                .data = switch (N) {
-                    2 => .{ 0, 1 },
-                    3 => .{ 0, 1, 0 },
-                    4 => .{ 0, 1, 0, 0 },
-                    else => unreachable,
-                },
-            };
+            var data: @This() = .{};
+            data.data[1] = 1;
+            return data;
         }
 
         pub fn z() @This() {
-            return .{
-                .data = switch (N) {
-                    2 => @compileError("Not possible."),
-                    3 => .{ 0, 0, 1 },
-                    4 => .{ 0, 0, 1, 0 },
-                    else => unreachable,
-                },
-            };
+            if (N < 3) @compileError("N must be >= 3.");
+            var data: @This() = .{};
+            data.data[2] = 1;
+            return data;
         }
 
         pub fn w() @This() {
-            return .{
-                .data = switch (N) {
-                    2, 3 => @compileError("Not possible."),
-                    4 => .{ 0, 0, 0, 1 },
-                },
-            };
+            if (N < 4) @compileError("N must eq 4.");
+            var data: @This() = .{};
+            data.data[3] = 1;
+            return data;
         }
 
         pub fn init(scalar: T) @This() {
@@ -108,14 +97,15 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
             return new;
         }
 
-        pub fn dot(self: @This(), other: @TypeOf(self)) T {
-            return self.mulV(other).sum();
+        pub fn dot(a: @This(), b: @TypeOf(a)) T {
+            // better dist fn
+            return a.mulV(b).sum();
         }
 
-        pub fn len(self: @This()) T {
+        pub fn len(a: @This()) T {
             return switch (@typeInfo(T)) {
-                .int => std.math.sqrt(self.dot()),
-                .float => @sqrt(self.dot()),
+                .int => std.math.sqrt(a.dot()),
+                .float => @sqrt(a.dot()),
                 else => unreachable,
             };
         }
