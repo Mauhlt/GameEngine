@@ -100,29 +100,6 @@ fn Quaternion(comptime T: type) type {
             return self.v4FromQuat().len();
         }
 
-        pub fn matFromQuat(self: @This()) M3 {
-            // M3 rotation matrix from quat
-            // col major order for m3
-            const v4 = @as(V4, self.data);
-
-            const q2 = v4.mulV(v4);
-
-            const q0q1 = 2 * self.data[0] * self.data[1];
-            const q0q2 = 2 * self.data[0] * self.data[2];
-            const q0q3 = 2 * self.data[0] * self.data[3];
-
-            const q1q2 = 2 * self.data[1] * self.data[2];
-            const q1q3 = 2 * self.data[1] * self.data[3];
-
-            const q2q3 = 2 * self.data[2] * self.data[3];
-
-            return .{ .data = .{
-                .{ 1 - 2 * (q2.data[2] - q2.data[3]), q1q2 + q0q3, q1q3 - q0q2 },
-                .{ q1q2 - q0q3, 1 - 2 * (q2.data[1] - q2.data[3]), q2q3 + q0q1 },
-                .{ q1q3 + q0q2, q2q3 - q0q1, 1 - 2 * (q2.data[1] - q2.data[2]) },
-            } };
-        }
-
         pub fn m3FromQuat(self: @This()) M3 {
             const v = self.pointFromQuat();
             const v2 = v.addV(v);
@@ -250,11 +227,28 @@ fn Quaternion(comptime T: type) type {
         }
 
         pub fn slerp(a: @This(), b: @This(), t: T) @This() {
-            var cos_theta = @as(V4, a).mulV(@as(V4, b)).sum();
+            // t must be a number between 0 and 1
+            // needs more work
+            var cos_theta = v4FromQuat(a).mulV(v4FromQuat(b)).sum();
+
             var b2 = b;
             if (cos_theta < 0) {
                 cos_theta = -cos_theta;
+                b2 = .{ .w = -b.w, .x = -b.x, .y = -b.y, .z = -b.z };
             }
+
+            // if close, use normal lerp
+            if (cos_theta > 0.9995) {
+                return quatFromV4((a.v4FromQuat() + @as(@Vector(4, T), @splat(t)) * (b2.v4FromQuat() - a.v4FromQuat())));
+            }
+
+            const theta = std.math.acos(cos_theta);
+            const sin_theta = @sin(theta);
+
+            const w1 = @sin(1 - t) * theta / sin_theta;
+            const w2 = @sin(t * theta) / sin_theta;
+            const output = quatFromV4(v4FromQuat(a) * @as(@Vector(4, T), w1) + v4FromQuat(b) * @as(@Vector(4, T), w2));
+            return output;
         }
     };
 }
