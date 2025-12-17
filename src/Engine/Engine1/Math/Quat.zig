@@ -20,22 +20,22 @@ fn Quaternion(comptime T: type) type {
         y: T = 0,
         z: T = 0,
 
-        pub fn pointFromQuat(self: @This()) V3 {
-            return .{ .data = .{ self.x, self.y, self.z } };
+        pub fn pointFromQuat(q: @This()) V3 {
+            return .{ .data = .{ q.x, q.y, q.z } };
         }
 
-        pub fn quatFromPoint(self: V3) @This() {
-            return .{ .w = 0, .x = self.data[0], .y = self.data[1], .z = self.data[2] };
+        pub fn quatFromPoint(p: V3) @This() {
+            return .{ .w = 0, .x = p.data[0], .y = p.data[1], .z = p.data[2] };
         }
 
-        pub fn v4FromQuat(self: @This()) V4 {
+        pub fn v4FromQuat(q: @This()) V4 {
             // return @bitCast(self);
-            return .{ .data = .{ self.w, self.x, self.y, self.z } };
+            return .{ .data = .{ q.w, q.x, q.y, q.z } };
         }
 
-        pub fn quatFromV4(self: V4) @This() {
+        pub fn quatFromV4(v: V4) @This() {
             // return @bitCast(self);
-            return .{ .w = self.data[0], .x = self.data[1], .y = self.data[2], .z = self.data[3] };
+            return .{ .w = v.data[0], .x = v.data[1], .y = v.data[2], .z = v.data[3] };
         }
 
         pub fn quatFromAxisAngle(axis: V3, angle: T) @This() {
@@ -226,6 +226,10 @@ fn Quaternion(comptime T: type) type {
             return p_prime.pointFromQuat();
         }
 
+        pub fn lerp(a: @This(), b: @This(), t: T) @This() {
+            return quatFromV4((a.v4FromQuat() + @as(@Vector(4, T), @splat(t)) * (b.v4FromQuat() - a.v4FromQuat())));
+        }
+
         pub fn slerp(a: @This(), b: @This(), t: T) @This() {
             // t must be a number between 0 and 1
             // needs more work
@@ -239,7 +243,7 @@ fn Quaternion(comptime T: type) type {
 
             // if close, use normal lerp
             if (cos_theta > 0.9995) {
-                return quatFromV4((a.v4FromQuat() + @as(@Vector(4, T), @splat(t)) * (b2.v4FromQuat() - a.v4FromQuat())));
+                return a.lerp(b2, t);
             }
 
             const theta = std.math.acos(cos_theta);
