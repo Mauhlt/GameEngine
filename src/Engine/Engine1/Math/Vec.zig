@@ -145,7 +145,7 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
             return a.len();
         }
 
-        pub fn lerp(a: @This(), b: @This(), t: T) @This() {
+        pub fn lerp(a: @This(), b: @TypeOf(a), t: T) @TypeOf(a) {
             return b.subV(a).mulS(t).addV(a); // a + t * (b - a) = (b - a) * t + a
         }
     };
