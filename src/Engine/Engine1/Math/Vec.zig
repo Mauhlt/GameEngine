@@ -141,8 +141,12 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
             }
         }
 
-        pub fn mag(self: @This()) @This() {
-            return self.len();
+        pub fn mag(a: @This()) @This() {
+            return a.len();
+        }
+
+        pub fn lerp(a: @This(), b: @This(), t: T) @This() {
+            return b.subV(a).mulS(t).addV(a); // a + t * (b - a) = (b - a) * t + a
         }
     };
 }

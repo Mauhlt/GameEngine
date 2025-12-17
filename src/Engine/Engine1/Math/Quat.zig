@@ -227,7 +227,7 @@ fn Quaternion(comptime T: type) type {
         }
 
         pub fn lerp(a: @This(), b: @This(), t: T) @This() {
-            return quatFromV4((a.v4FromQuat() + @as(@Vector(4, T), @splat(t)) * (b.v4FromQuat() - a.v4FromQuat())));
+            return a.v4FromQuat().lerp(b.v4FromQuat(), t);
         }
 
         pub fn slerp(a: @This(), b: @This(), t: T) @This() {
