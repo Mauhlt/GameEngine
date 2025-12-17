@@ -123,9 +123,7 @@ fn Quaternion(comptime T: type) type {
             } };
         }
 
-        // pub fn m3FromQuat(self: @This()) M3 {}
-
-        pub fn m4FromQuat(self: @This()) M4 {
+        pub fn m3FromQuat(self: @This()) M3 {
             const v = self.pointFromQuat();
             const v2 = v.addV(v);
 
@@ -140,24 +138,79 @@ fn Quaternion(comptime T: type) type {
 
             const w = V3.init(self.w).mulV(v2);
             const wx = w.data[0];
+            const wy = w.data[1];
+            const wz = w.data[2];
 
             return .{
                 .data = .{
-                    .{},
-                    .{},
-                    .{},
-                    .{},
+                    .{ 1 - (yy + zz), xy + wz, xz - wy },
+                    .{ xy - wz, 1 - (xx + zz), yz + wx },
+                    .{ xz + wy, yz - wx, 1 - (xx + yy) },
                 },
             };
+        }
 
+        pub fn m4FromQuat(self: @This()) M4 {
+            const m3 = self.m3FromQuat();
             return .{
                 .data = .{
-                    .{ 1 - (yy + zz), xy + wz, xz - wy, 0 },
-                    .{ xy - wz, 1 - (xx + zz), yz + wx, 0 },
-                    .{ xz + wy, yz - wx, 1 - (xx + yy), 0 },
+                    .{ m3.data[0][0..3].*, 0 },
+                    .{ m3.data[1][0..3].*, 0 },
+                    .{ m3.data[2][0..3].*, 0 },
                     .{ 0, 0, 0, 1 },
                 },
             };
+        }
+
+        pub fn quatFromM3(m: M3) @This() {
+            // normally sqrt sum, but unit quaternion
+            const trace = m.data[0][0] + m.data[1][1] + m.data[2][2];
+
+            if (trace > 0) {
+                const t = @sqrt(trace + 1.0) * 2.0;
+                return .{
+                    .w = 0.25 * t,
+                    .x = (m.data[2][1] - m.data[1][2]) / t,
+                    .y = (m.data[0][2] - m.data[2][0]) / t,
+                    .z = (m.data[1][0] - m.data[0][1]) / t,
+                };
+            }
+
+            if (m.data[0][0] > m.data[1][1] and m.data[0][0] > m.data[2][2]) {
+                const t = @sqrt(1 + m.data[0][0] - m.data[1][1] - m.data[2][2]) * 2.0;
+                return .{
+                    .w = (m.data[2][1] - m.data[1][2]) / t,
+                    .x = 0.25 * t,
+                    .y = (m.data[0][1] + m.data[1][0]) / t,
+                    .z = (m.data[0][2] + m.data[2][0]),
+                };
+            }
+
+            if (m.data[1][1] > m.data[2][2]) {
+                const t = @sqrt(1.0 + m.data[1][1] - m.data[0][0] - m.data[2][2]) * 2.0;
+                return .{
+                    .w = (m.data[0][2] - m.data[2][0]) / t,
+                    .x = (m.data[0][1] + m.data[1][0]) / t,
+                    .y = 0.25 * t,
+                    .z = (m.data[1][2] + m.data[2][1]) / t,
+                };
+            }
+
+            const t = @sqrt(1.0 + m.data[0][0] - m.data[1][1] - m.data[2][2]) * 2.0;
+            return .{
+                .w = (m.data[1][0] - m.data[0][1]) / t,
+                .x = (m.data[0][2] + m.data[2][0]) / t,
+                .y = (m.data[1][2] + m.data[2][1]) / t,
+                .z = 0.25 * t,
+            };
+        }
+
+        pub fn quatFromM4(m: M4) @This() {
+            return quatFromM3(.{ .data = .{
+                .{m.data[0][0..3].*},
+                .{m.data[1][0..3].*},
+                .{m.data[2][0..3].*},
+            } });
         }
 
         pub fn mul(r: @This(), s: @This()) @This() {
