@@ -50,6 +50,11 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
             };
         }
 
+        pub fn init(scalar: T) @This() {
+            // init a v3 from scalar
+            return .{ .data = [_]T{scalar} ** N };
+        }
+
         pub fn sum(self: @This()) T {
             return @reduce(.Add, @as(@Vector(N, T), self.data));
         }
@@ -90,6 +95,19 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
             return self.mulV(den);
         }
 
+        pub fn pow(self: @This(), value: T) @TypeOf(self) {
+            var new: @This() = self;
+            switch (@typeInfo(T)) {
+                .int, .float => {
+                    inline for (0..N) |i| {
+                        new.data[i] = std.math.pow(T, self.data[i], value);
+                    }
+                },
+                else => unreachable,
+            }
+            return new;
+        }
+
         pub fn dot(self: @This(), other: @TypeOf(self)) T {
             return self.mulV(other).sum();
         }
@@ -121,6 +139,10 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
                 },
                 else => unreachable,
             }
+        }
+
+        pub fn mag(self: @This()) @This() {
+            return self.len();
         }
     };
 }
