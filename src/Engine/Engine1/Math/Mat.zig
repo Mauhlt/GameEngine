@@ -1,25 +1,30 @@
 const std = @import("std");
 const Vec = @import("Vec.zig");
-const V2 = Vec.V2;
-const V3 = Vec.V3;
-const V4 = Vec.V4;
 // eye, fromCols, mulS, mulV
 
-pub fn Matrix(comptime N: usize, comptime T: type) type {
+pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
     if (N < 2 or N > 4) @compileError("2 >= N <= 4\n");
     switch (@typeInfo(T)) {
-        .int, .float => {},
+        .float => {},
         else => @compileError("T must be an int or float.\n"),
     }
 
+    const VN = Vec.Vector(T, N);
+
     // col major
     return struct {
+        // default = all zeros
         data: [N][N]T = @bitCast([_]T{0} ** (N * N)),
 
         pub fn eye() @This() {
             var self: @This() = .{};
-            inline for (0..N) |i| self.data[i][i] = 1;
+            inline for (0..N) |i| self.data[i][i] = 1.0;
             return self;
+        }
+
+        pub fn init(scalar: T) @This() {
+            // for scalar matrices (i.e. all ones or all twos)
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), @splat(scalar))) };
         }
 
         pub fn fromCols(cols: [N][N]T) @This() {
@@ -27,14 +32,14 @@ pub fn Matrix(comptime N: usize, comptime T: type) type {
         }
 
         pub fn mulS(self: @This(), scalar: T) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), @bitCast(self.data)) * scalar) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) * @as(@Vector(N * N, T), @splat(scalar))) };
         }
 
         pub fn mulV(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) * @as(@Vector(N * N, T), other.data)) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), @bitCast(self.data)) * @as(@Vector(N * N, T), @bitCast(other.data))) };
         }
 
-        pub fn row(self: @This(), i: usize) Vec.Vector(T, N) {
+        pub fn row(self: @This(), i: usize) VN {
             return switch (N) {
                 2 => .{ .data = .{ self.data[0][i], self.data[1][i] } },
                 3 => .{ .data = .{ self.data[0][i], self.data[1][i], self.data[2][i] } },
@@ -42,7 +47,7 @@ pub fn Matrix(comptime N: usize, comptime T: type) type {
                 else => unreachable,
             };
         }
-        pub fn col(self: @This(), i: usize) Vec.Vector(T, N) {
+        pub fn col(self: @This(), i: usize) VN {
             return .{ .data = self.data[i] };
         }
 
@@ -51,18 +56,11 @@ pub fn Matrix(comptime N: usize, comptime T: type) type {
             // a b c     j k l     aj + bm + cp;  ak + bn + cq;  al + bo + cr;    aj + bm + cp;  dj + em + dp;  gj + hm + ip;
             // d e f  *  m n o  =  dj + em + dp;  dk + en + fq;  dl + eo + fr; =  ak + bn + cq;  dk + en + fq;  gk + hn + iq;
             // g h i     p q r     gj + hm + ip;  gk + hn + iq;  gl + ho + ir;    al + bo + cr;  dl + eo + fr;  gl + ho + ir;
-
-            const V = switch (N) {
-                2 => Vec.V2,
-                3 => Vec.V3,
-                4 => Vec.V4,
-                else => unreachable,
-            };
             var out: @This() = .{};
             inline for (0..N) |i| { // row
-                var v1: V = self.row(i);
+                var v1: VN = self.row(i);
                 inline for (0..N) |j| { // col
-                    const v2: V = other.col(j);
+                    const v2: VN = other.col(j);
                     out.data[i][j] = v1.dot(v2);
                 }
             }
@@ -101,10 +99,6 @@ pub fn Matrix(comptime N: usize, comptime T: type) type {
     };
 }
 
-pub const M2 = Matrix(2, f32);
-pub const M3 = Matrix(3, f32);
-pub const M4 = Matrix(4, f32);
-
 pub fn ortho(comptime T: type, left: T, right: T, bot: T, top: T, near: T, far: T) Matrix(4, T) {
     return .{
         .{ 2.0 / (right - left), 0, 0, 0 },
@@ -126,6 +120,7 @@ pub fn persp(comptime T: type, fovy: T, aspect: T, zNear: T, zFar: T) Matrix(4, 
 
 test "Basics" {
     // testing matrix multiplication
+    const M2 = Matrix(2, f32);
     const a: M2 = .{ .data = .{
         .{ 2, 9 },
         .{ 3, 7 },

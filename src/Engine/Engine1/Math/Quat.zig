@@ -8,6 +8,7 @@ pub fn Quaternion(comptime T: type) type {
         else => @compileError("T must be a float.\n"),
     }
 
+    // Types
     const V3 = Vec.Vector(T, 3);
     const V4 = Vec.Vector(T, 4);
     const M3 = Mat.Matrix(T, 3);
@@ -24,21 +25,13 @@ pub fn Quaternion(comptime T: type) type {
             return .{ .data = .{ q.x, q.y, q.z } };
         }
 
-        pub fn quatFromPoint(p: V3) @This() {
-            return .{ .w = 0, .x = p.data[0], .y = p.data[1], .z = p.data[2] };
-        }
-
         pub fn v4FromQuat(q: @This()) V4 {
             // return @bitCast(self);
             return .{ .data = @Vector(4, T){ q.w, q.x, q.y, q.z } };
         }
 
-        pub fn quatFromV4(v: V4) @This() {
-            return .{ .w = v.data[0], .x = v.data[1], .y = v.data[2], .z = v.data[3] };
-        }
-
         pub fn quatFromAxisAngle(axis: V3, angle: T) @This() {
-            if (angle == 0) return quatFromPoint(axis);
+            if (angle == 0) return axis.quatFromVec();
             // half angle
             const half = angle * 0.5;
             // sine
@@ -59,7 +52,7 @@ pub fn Quaternion(comptime T: type) type {
         pub fn norm(self: @This()) @This() {
             const curr_len = self.len();
             if (curr_len == 0) return self;
-            return quatFromV4(self.v4FromQuat().divS(curr_len));
+            return self.v4FromQuat().divS(curr_len).quatFromVec();
         }
 
         pub fn axisFromQuat(self: @This()) V3 {
@@ -236,7 +229,8 @@ pub fn Quaternion(comptime T: type) type {
 
             const w1 = @sin(1 - t) * theta / sin_theta;
             const w2 = @sin(t * theta) / sin_theta;
-            return quatFromV4(a.v4FromQuat().mulS(w1).addV(b.v4FromQuat().mulS(w2)));
+            a.v4FromQuat().mulS(w1).addV(b.v4FromQuat().mulS(w2)).divS
+            return a.v4FromQuat().mulS(w1).addV(b.v4FromQuat().mulS(w2)).quatFromVec();
         }
     };
 }

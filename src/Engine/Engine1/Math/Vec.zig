@@ -6,6 +6,7 @@ const Matrix = @import("Mat.zig").Matrix;
 pub fn Vector(comptime T: type, comptime N: comptime_int) type {
     if (N <= 1) @compileError("N must be greater than 1");
     if (N >= 4) @compileError("N must be less than or equal to 4");
+
     switch (@typeInfo(T)) {
         .float => {},
         else => @compileError("Invalid Type."),
@@ -131,11 +132,7 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
     };
 }
 
-pub const V2 = Vector(f32, 2);
-pub const V3 = Vector(f32, 3);
-pub const V4 = Vector(f32, 4);
-
-pub fn lookAt(comptime T: type, eye: V3, center: V3, up: V3) Matrix(4, T) {
+pub fn lookAt(comptime T: type, eye: Vector(T, 3), center: Vector(T, 3), up: Vector(T, 3)) Matrix(4, T) {
     const f = center.subV(eye).norm();
     const s = f.cross(up).norm();
     const u = s.cross(f);
