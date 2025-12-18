@@ -1,4 +1,5 @@
 const std = @import("std");
+const Quat = @import("Quat.zig");
 const Matrix = @import("Mat.zig").Matrix;
 // zero, x, y, z, w, (S/V) {add, sub, mul, div}, len, norm, cross, lookAt
 
@@ -6,108 +7,102 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
     if (N <= 1) @compileError("N must be greater than 1");
     if (N >= 4) @compileError("N must be less than or equal to 4");
     switch (@typeInfo(T)) {
-        .int, .float => {},
+        .float => {},
         else => @compileError("Invalid Type."),
     }
 
+    const Q4 = Quat.Quaternion(T);
+
     return struct {
-        data: [N]T = [_]T{0} ** N, // x, y, z, w
+        data: @Vector(N, T) = @as(@Vector(N, T), [_]T{0} ** N),
 
-        pub fn x() @This() {
-            return .{
-                .data = .{ 1, [_]T{0} ** N - 1 },
-            };
-        }
-
-        pub fn y() @This() {
-            var data: @This() = .{};
-            data.data[1] = 1;
-            return data;
-        }
-
-        pub fn z() @This() {
-            if (N < 3) @compileError("N must be >= 3.");
-            var data: @This() = .{};
-            data.data[2] = 1;
-            return data;
-        }
-
-        pub fn w() @This() {
-            if (N < 4) @compileError("N must eq 4.");
-            var data: @This() = .{};
-            data.data[3] = 1;
-            return data;
+        pub fn new(data: [N]T) @This() {
+            return .{ .data = @as(@Vector(N, T), data) };
         }
 
         pub fn init(scalar: T) @This() {
             // init a v3 from scalar
-            return .{ .data = [_]T{scalar} ** N };
+            return .{ .data = @as(@Vector(N, T), @splat(scalar)) };
+        }
+
+        pub fn quatFromVec(v: @This()) Q4 {
+            return switch (N) {
+                3 => .{ .w = 0, .x = v.data[1], .y = v.data[2], .z = v.data[3] },
+                4 => .{ .w = v.data[0], .x = v.data[1], .y = v.data[2], .z = v.data[3] },
+                else => unreachable,
+            };
         }
 
         pub fn sum(self: @This()) T {
-            return @reduce(.Add, @as(@Vector(N, T), self.data));
+            return @reduce(.Add, self.data);
         }
 
         pub fn addS(self: @This(), scalar: T) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N, T), self.data) + @as(@Vector(N, T), @splat(scalar))) };
+            const s = init(scalar);
+            return .{ .data = self.data + s.data };
         }
 
         pub fn addV(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N, T), self.data) + @as(@Vector(N, T), other.data)) };
+            return .{ .data = self.data + other.data };
         }
 
         pub fn subS(self: @This(), scalar: T) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N, T), self.data) - @as(@Vector(N, T), @splat(scalar))) };
+            const s = init(scalar);
+            return .{ .data = self.data - s.data };
         }
 
         pub fn subV(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N, T), self.data) - @as(@Vector(N, T), other.data)) };
+            return .{ .data = self.data - other.data };
         }
 
         pub fn mulS(self: @This(), scalar: T) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N, T), self.data) * @as(@Vector(N, T), @splat(scalar))) };
+            const s = init(scalar);
+            return .{ .data = self.data * s.data };
         }
 
         pub fn mulV(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N, T), self.data) * @as(@Vector(N, T), other.data)) };
+            return .{ .data = self.data * other.data };
         }
 
         pub fn divS(self: @This(), scalar: T) @TypeOf(self) {
-            std.debug.assert(scalar != 0);
-            const den: @This() = .{ .data = @bitCast(@as(@Vector(N, T), @splat(1)) / @as(@Vector(N, T), scalar)) };
-            return self.mulV(den);
+            std.debug.assert(scalar != @as(T, 0));
+            const s = init(scalar);
+            return .{ .data = self.data / s.data };
         }
 
         pub fn divV(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            std.debug.assert(!@reduce(.Or, @as(@Vector(N, T), other.data) == @as(@Vector(N, T), @splat(0))));
-            const den: @This() = .{ .data = @bitCast(@as(@Vector(N, T), @splat(1)) / @as(@Vector(N, T), other.data)) };
-            return self.mulV(den);
+            const zero_vec = init(0);
+            std.debug.assert(!@reduce(.Or, other.data == zero_vec.data));
+            return .{ .data = self.data / other.data };
         }
 
-        pub fn pow(self: @This(), value: T) @TypeOf(self) {
-            var new: @This() = self;
-            switch (@typeInfo(T)) {
-                .int, .float => {
-                    inline for (0..N) |i| {
-                        new.data[i] = std.math.pow(T, self.data[i], value);
-                    }
-                },
-                else => unreachable,
-            }
-            return new;
+        pub fn sqrt(self: @This()) @TypeOf(self) {
+            return .{ .data = @sqrt(self.data) };
+        }
+
+        pub fn sqr(self: @This()) @TypeOf(self) {
+            return .{ .data = self.data * self.data };
         }
 
         pub fn dot(a: @This(), b: @TypeOf(a)) T {
-            // better dist fn
             return a.mulV(b).sum();
         }
 
+        pub fn dist(a: @This(), b: @TypeOf(a)) T {
+            return @sqrt(a.subV(b).sqr().sum());
+        }
+
+        pub fn distFast(a: @This(), b: @TypeOf(a)) T {
+            // faster
+            return a.subV(b).sqr().sum();
+        }
+
         pub fn len(a: @This()) T {
-            return switch (@typeInfo(T)) {
-                .int => std.math.sqrt(a.dot()),
-                .float => @sqrt(a.dot()),
-                else => unreachable,
-            };
+            return @sqrt(a.dot(a));
+        }
+
+        pub fn mag(a: @This()) T {
+            return a.len();
         }
 
         pub fn norm(self: @This()) @TypeOf(self) {
@@ -115,28 +110,23 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
         }
 
         pub fn cross(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            switch (N) {
-                2 => @compileError("Not possible"),
-                3, 4 => {
-                    const a = self.data[1] * other.data[2] - self.data[2] * other.data[1];
-                    const b = self.data[2] * other.data[0] - self.data[0] * other.data[2];
-                    const c = self.data[0] * other.data[1] - self.data[1] * other.data[0];
-                    var data: @This() = self;
-                    data.data[0] = a;
-                    data.data[1] = b;
-                    data.data[2] = c;
-                    return data;
-                },
-                else => unreachable,
-            }
-        }
+            std.debug.assert(N >= 3 and N <= 4);
 
-        pub fn mag(a: @This()) @This() {
-            return a.len();
+            const c1 = @Vector(N, T){ self.data[1], self.data[2], self.data[0] };
+            const c2 = @Vector(N, T){ other.data[2], other.data[0], other.data[1] };
+            const c3 = @Vector(N, T){ self.data[2], self.data[0], self.data[1] };
+            const c4 = @Vector(N, T){ other.data[1], other.data[2], other.data[0] };
+            const out = (c1 * c2) - (c3 * c4);
+            return switch (N) {
+                3 => .{ .data = out },
+                4 => .{ .data = @Vector(N, T){ out, 0 } },
+                else => unreachable,
+            };
         }
 
         pub fn lerp(a: @This(), b: @TypeOf(a), t: T) @TypeOf(a) {
-            return b.subV(a).mulS(t).addV(a); // a + t * (b - a) = (b - a) * t + a
+            // a + t * (b - a) = (b - a) * t + a
+            return b.subV(a).mulS(t).addV(a);
         }
     };
 }

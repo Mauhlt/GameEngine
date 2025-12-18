@@ -2,10 +2,10 @@ const std = @import("std");
 const Vec = @import("Vec.zig");
 const Mat = @import("Mat.zig");
 
-fn Quaternion(comptime T: type) type {
+pub fn Quaternion(comptime T: type) type {
     switch (@typeInfo(T)) {
-        .int, .float => {},
-        else => @compileError("T must be int or float.\n"),
+        .float => {},
+        else => @compileError("T must be a float.\n"),
     }
 
     const V3 = Vec.Vector(T, 3);
@@ -30,11 +30,10 @@ fn Quaternion(comptime T: type) type {
 
         pub fn v4FromQuat(q: @This()) V4 {
             // return @bitCast(self);
-            return .{ .data = .{ q.w, q.x, q.y, q.z } };
+            return .{ .data = @Vector(4, T){ q.w, q.x, q.y, q.z } };
         }
 
         pub fn quatFromV4(v: V4) @This() {
-            // return @bitCast(self);
             return .{ .w = v.data[0], .x = v.data[1], .y = v.data[2], .z = v.data[3] };
         }
 
@@ -43,17 +42,9 @@ fn Quaternion(comptime T: type) type {
             // half angle
             const half = angle * 0.5;
             // sine
-            const s = switch (@typeInfo(T)) {
-                .int => std.math.sin(half),
-                .float => @sin(half),
-                else => unreachable,
-            };
+            const s = @sin(half);
             // cos
-            const c = switch (@typeInfo(T)) {
-                .int => std.math.cos(half),
-                .float => @cos(half),
-                else => unreachable,
-            };
+            const c = @cos(half);
             // sin
             const new = axis.mulS(s);
             // combine
@@ -62,11 +53,7 @@ fn Quaternion(comptime T: type) type {
 
         pub fn len(self: @This()) T {
             const sqrd_sum = self.v4FromQuat().len();
-            return switch (@typeInfo(T)) {
-                .int => std.math.sqrt(sqrd_sum),
-                .float => @sqrt(sqrd_sum),
-                else => unreachable,
-            };
+            return @sqrt(sqrd_sum);
         }
 
         pub fn norm(self: @This()) @This() {
@@ -81,11 +68,7 @@ fn Quaternion(comptime T: type) type {
             const half_theta = std.math.acos(self.data[0]);
             if (half_theta == 0) return self.pointFromQuat();
             // sine = x, y, z
-            const s = switch (@typeInfo(T)) {
-                .int => std.math.sin(half_theta),
-                .float => @sin(half_theta),
-                else => unreachable,
-            };
+            const s = @sin(half_theta);
             // remove sin component
             return self.pointFromQuat().divS(s);
         }
@@ -196,14 +179,18 @@ fn Quaternion(comptime T: type) type {
             // const t1 = r.data[0] * s.data[1] + r.data[1] * s.data[0] - r.data[2] * s.data[3] + r.data[3] * s.data[2];
             // const t2 = r.data[0] * s.data[2] + r.data[1] * s.data[3] + r.data[2] * s.data[0] - r.data[3] * s.data[1];
             // const t3 = r.data[0] * s.data[3] - r.data[1] * s.data[2] + r.data[2] * s.data[1] + r.data[3] * s.data[0];
-            const c0 = V4.init(r.w).mulV(s.v4FromQuat());
-            const c1 = V4.init(r.x) * @as(@Vector(4, T), .{ s.data[1], s.data[0], s.data[3], s.data[2] });
-            const c2 = V4.init(r.y) * @as(@Vector(4, T), .{ s.data[2], s.data[3], s.data[0], s.data[1] });
-            const c3 = V4.init(r.z) * @as(@Vector(4, T), .{ s.data[3], s.data[2], s.data[1], s.data[0] });
+
+            const c0: [4]T = s.v4FromQuat().mulS(r.w).data;
+            const sV = @Vector(4, T){ s.w, s.x, s.y, s.z };
+            const c1: [4]T = @bitCast(@as(@Vector(4, T), @splat(r.x)) * sV);
+            const c2: [4]T = @bitCast(@as(@Vector(4, T), @splat(r.y)) * sV);
+            const c3: [4]T = @bitCast(@as(@Vector(4, T), @splat(r.z)) * sV);
+
             const t0 = c0[0] - c1[0] - c2[0] - c3[0];
             const t1 = c0[1] + c1[1] - c2[1] + c3[1];
             const t2 = c0[2] + c1[2] + c2[2] - c3[2];
             const t3 = c0[3] - c1[3] + c2[3] + c3[3];
+
             return .{ .data = .{ t0, t1, t2, t3 } };
         }
 
@@ -233,7 +220,7 @@ fn Quaternion(comptime T: type) type {
         pub fn slerp(a: @This(), b: @This(), t: T) @This() {
             // t must be a number between 0 and 1
             // needs more work
-            var cos_theta = v4FromQuat(a).mulV(v4FromQuat(b)).sum();
+            var cos_theta = a.v4FromQuat().dot(b.v4FromQuat());
 
             var b2 = b;
             if (cos_theta < 0) {
@@ -242,17 +229,14 @@ fn Quaternion(comptime T: type) type {
             }
 
             // if close, use normal lerp
-            if (cos_theta > 0.9995) {
-                return a.lerp(b2, t);
-            }
+            if (cos_theta > 0.995) return a.lerp(b2, t); // limit 0.9995
 
             const theta = std.math.acos(cos_theta);
             const sin_theta = @sin(theta);
 
             const w1 = @sin(1 - t) * theta / sin_theta;
             const w2 = @sin(t * theta) / sin_theta;
-            const output = quatFromV4(v4FromQuat(a) * @as(@Vector(4, T), w1) + v4FromQuat(b) * @as(@Vector(4, T), w2));
-            return output;
+            return quatFromV4(a.v4FromQuat().mulS(w1).addV(b.v4FromQuat().mulS(w2)));
         }
     };
 }
