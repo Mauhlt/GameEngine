@@ -4,8 +4,7 @@ const Matrix = @import("Mat.zig").Matrix;
 // zero, x, y, z, w, (S/V) {add, sub, mul, div}, len, norm, cross, lookAt
 
 pub fn Vector(comptime T: type, comptime N: comptime_int) type {
-    if (N <= 1) @compileError("N must be greater than 1");
-    if (N >= 4) @compileError("N must be less than or equal to 4");
+    if (N > 4 or N < 2) @compileError("2 <= N <= 4");
 
     switch (@typeInfo(T)) {
         .float => {},

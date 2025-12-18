@@ -229,7 +229,6 @@ pub fn Quaternion(comptime T: type) type {
 
             const w1 = @sin(1 - t) * theta / sin_theta;
             const w2 = @sin(t * theta) / sin_theta;
-            a.v4FromQuat().mulS(w1).addV(b.v4FromQuat().mulS(w2)).divS
             return a.v4FromQuat().mulS(w1).addV(b.v4FromQuat().mulS(w2)).quatFromVec();
         }
     };

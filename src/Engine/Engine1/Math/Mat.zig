@@ -4,6 +4,7 @@ const Vec = @import("Vec.zig");
 
 pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
     if (N < 2 or N > 4) @compileError("2 >= N <= 4\n");
+
     switch (@typeInfo(T)) {
         .float => {},
         else => @compileError("T must be an int or float.\n"),
@@ -99,7 +100,7 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
     };
 }
 
-pub fn ortho(comptime T: type, left: T, right: T, bot: T, top: T, near: T, far: T) Matrix(4, T) {
+pub fn ortho(comptime T: type, left: T, right: T, bot: T, top: T, near: T, far: T) Matrix(T, 4) {
     return .{
         .{ 2.0 / (right - left), 0, 0, 0 },
         .{ 0, 2.0 / (top - bot), 0, 0 },
@@ -108,7 +109,7 @@ pub fn ortho(comptime T: type, left: T, right: T, bot: T, top: T, near: T, far: 
     };
 }
 
-pub fn persp(comptime T: type, fovy: T, aspect: T, zNear: T, zFar: T) Matrix(4, T) {
+pub fn persp(comptime T: type, fovy: T, aspect: T, zNear: T, zFar: T) Matrix(T, 4) {
     const f = 1.0 / @tan(fovy * 0.5);
     return .{
         .{ f / aspect, 0, 0, 0 },
