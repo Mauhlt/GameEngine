@@ -1,6 +1,7 @@
 const std = @import("std");
-const Vec = @import("Vec.zig");
-const Mat = @import("Mat.zig");
+const Vec = @import("Vec.zig").Vector;
+const Mat = @import("Mat.zig").Matrix;
+// Use init quaternions
 
 pub fn Quaternion(comptime T: type) type {
     switch (@typeInfo(T)) {
@@ -9,10 +10,10 @@ pub fn Quaternion(comptime T: type) type {
     }
 
     // Types
-    const V3 = Vec.Vector(T, 3);
-    const V4 = Vec.Vector(T, 4);
-    const M3 = Mat.Matrix(T, 3);
-    const M4 = Mat.Matrix(T, 4);
+    const V3 = Vec(T, 3);
+    const V4 = Vec(T, 4);
+    const M3 = Mat(T, 3);
+    const M4 = Mat(T, 4);
 
     return struct {
         // default is identity matrix
@@ -21,7 +22,8 @@ pub fn Quaternion(comptime T: type) type {
         y: T = 0,
         z: T = 0,
 
-        pub fn pointFromQuat(q: @This()) V3 {
+        pub fn v3FromQuat(q: @This()) V3 {
+            // also point from quat
             return .{ .data = .{ q.x, q.y, q.z } };
         }
 
@@ -30,8 +32,16 @@ pub fn Quaternion(comptime T: type) type {
             return .{ .data = @Vector(4, T){ q.w, q.x, q.y, q.z } };
         }
 
+        pub fn quatFromV3(v: V3) @This() {
+            return .{ .w = 0, .x = v.data[0], .y = v.data[1], .z = v.data[2] };
+        }
+
+        pub fn quatFromV4(v: V4) @This() {
+            return .{ .w = v.data[3], .x = v.data[0], .y = v.data[1], .z = v.data[2] };
+        }
+
         pub fn quatFromAxisAngle(axis: V3, angle: T) @This() {
-            if (angle == 0) return axis.quatFromVec();
+            // if (angle == 0) return axis.quatFromVec();
             // half angle
             const half = angle * 0.5;
             // sine
@@ -44,32 +54,30 @@ pub fn Quaternion(comptime T: type) type {
             return .{ .w = c, .x = new.data[0], .y = new.data[1], .z = new.data[2] };
         }
 
+        pub fn axisFromQuat(self: @This()) V3 {
+            // part of axis angle
+            // half angle from cosine
+            const half_theta = std.math.acos(self.w);
+            if (half_theta == 0) return self.v3FromQuat();
+            // sine = x, y, z
+            const s = @sin(half_theta);
+            // remove sin component
+            return self.v3FromQuat().divS(s);
+        }
+
+        pub fn angleFromQuat(self: @This()) T {
+            // part of axis angle
+            return 2 * std.math.acos(self.w);
+        }
+
         pub fn len(self: @This()) T {
-            const sqrd_sum = self.v4FromQuat().len();
-            return @sqrt(sqrd_sum);
+            return @sqrt(self.v4FromQuat().len());
         }
 
         pub fn norm(self: @This()) @This() {
             const curr_len = self.len();
             if (curr_len == 0) return self;
-            return self.v4FromQuat().divS(curr_len).quatFromVec();
-        }
-
-        pub fn axisFromQuat(self: @This()) V3 {
-            // part of axis angle
-            // half angle from cosine
-            const half_theta = std.math.acos(self.data[0]);
-            if (half_theta == 0) return self.pointFromQuat();
-            // sine = x, y, z
-            const s = @sin(half_theta);
-            // remove sin component
-            return self.pointFromQuat().divS(s);
-        }
-
-        pub fn angleFromQuat(self: @This()) T {
-            // part of axis angle
-            const angle = 2 * std.math.acos(self.data[0]);
-            return angle;
+            return quatFromV4(self.v4FromQuat().norm());
         }
 
         pub fn mag(self: @This()) T {
@@ -77,7 +85,7 @@ pub fn Quaternion(comptime T: type) type {
         }
 
         pub fn m3FromQuat(self: @This()) M3 {
-            const v = self.pointFromQuat();
+            const v = self.v3FromQuat();
             const v2 = v.addV(v);
 
             const xyz = v.mulV(v2);
@@ -166,44 +174,63 @@ pub fn Quaternion(comptime T: type) type {
             } });
         }
 
-        pub fn mul(r: @This(), s: @TypeOf(r)) @TypeOf(r) {
-            // associative but not commutative
-            // const t0 = r.data[0] * s.data[0] - r.data[1] * s.data[1] - r.data[2] * s.data[2] - r.data[3] * s.data[3];
-            // const t1 = r.data[0] * s.data[1] + r.data[1] * s.data[0] - r.data[2] * s.data[3] + r.data[3] * s.data[2];
-            // const t2 = r.data[0] * s.data[2] + r.data[1] * s.data[3] + r.data[2] * s.data[0] - r.data[3] * s.data[1];
-            // const t3 = r.data[0] * s.data[3] - r.data[1] * s.data[2] + r.data[2] * s.data[1] + r.data[3] * s.data[0];
-
-            const c0: [4]T = s.v4FromQuat().mulS(r.w).data;
-            const sV = @Vector(4, T){ s.w, s.x, s.y, s.z };
-            const c1: [4]T = @bitCast(@as(@Vector(4, T), @splat(r.x)) * sV);
-            const c2: [4]T = @bitCast(@as(@Vector(4, T), @splat(r.y)) * sV);
-            const c3: [4]T = @bitCast(@as(@Vector(4, T), @splat(r.z)) * sV);
-
-            const t0 = c0[0] - c1[0] - c2[0] - c3[0];
-            const t1 = c0[1] + c1[1] - c2[1] + c3[1];
-            const t2 = c0[2] + c1[2] + c2[2] - c3[2];
-            const t3 = c0[3] - c1[3] + c2[3] + c3[3];
-
-            return .{ .data = .{ t0, t1, t2, t3 } };
+        pub fn add(p: @This(), q: @TypeOf(p)) @TypeOf(p) {
+            return quatFromV4(p.v4FromQuat().addV(q.v4FromQuat()));
         }
+
+        pub fn mul(p: @This(), q: @TypeOf(p)) @TypeOf(p) {
+            const p3 = p.v3FromQuat();
+            const q3 = q.v3FromQuat();
+            const output = V3.init((p.w * q.w) - p3.dot(q3)).addV(q3.mulS(p.w)).addV(p3.mulS(q.w)).addV(p3.cross(q3));
+            return quatFromV3(output);
+        }
+
+        // pub fn mul(r: @This(), s: @TypeOf(r)) @TypeOf(r) {
+        //     // associative but not commutative
+        //     // const t0 = r.data[0] * s.data[0] - r.data[1] * s.data[1] - r.data[2] * s.data[2] - r.data[3] * s.data[3];
+        //     // const t1 = r.data[0] * s.data[1] + r.data[1] * s.data[0] - r.data[2] * s.data[3] + r.data[3] * s.data[2];
+        //     // const t2 = r.data[0] * s.data[2] + r.data[1] * s.data[3] + r.data[2] * s.data[0] - r.data[3] * s.data[1];
+        //     // const t3 = r.data[0] * s.data[3] - r.data[1] * s.data[2] + r.data[2] * s.data[1] + r.data[3] * s.data[0];
+        //
+        //     const c0: [4]T = s.v4FromQuat().mulS(r.w).data;
+        //     const sV = @Vector(4, T){ s.w, s.x, s.y, s.z };
+        //     const c1: [4]T = @bitCast(@as(@Vector(4, T), @splat(r.x)) * sV);
+        //     const c2: [4]T = @bitCast(@as(@Vector(4, T), @splat(r.y)) * sV);
+        //     const c3: [4]T = @bitCast(@as(@Vector(4, T), @splat(r.z)) * sV);
+        //
+        //     const t0 = c0[0] - c1[0] - c2[0] - c3[0];
+        //     const t1 = c0[1] + c1[1] - c2[1] + c3[1];
+        //     const t2 = c0[2] + c1[2] + c2[2] - c3[2];
+        //     const t3 = c0[3] - c1[3] + c2[3] + c3[3];
+        //
+        //     return .{ .w = t0, .x = t1, .y = t2, .z = t3 };
+        // }
 
         pub fn inv(a: @This()) @This() {
-            return .{ .data = .{ a.data[0], -a.data[1], -a.data[2], -a.data[3] } };
+            return .{ .w = a.w, .x = -a.x, .y = -a.y, .z = -a.z };
         }
 
-        pub fn rot(p: V3, q_r: @This()) V3 {
-            // p = point to be rotated
-            // q_r = rotation quaternion
-            // q' = inv of q
-            // mag of q_r must be 1
-            // p' = coordinates of rotated point
-            // TODO: abstract this for different forms of data:
-            // 1. 2 points - how to rotate to each other?
-            // 2. 1 axis + 1 angle
-            // 3. 1 point + 1 axis + angle
-            const q_prime = q_r.inv();
-            const p_prime = q_prime.mul(p).mul(q_r);
-            return p_prime.pointFromQuat();
+        pub fn conj(a: @This()) @This() {
+            return a.inv();
+        }
+
+        pub fn rot1(q: @This(), v: V3) V3 {
+            // no intermediate quats = optimized closed form
+            const qv = v3FromQuat(q);
+            // t = 2 * cross(qv, v);
+            const t = qv.cross(v).mulS(2.0);
+            // v' = v + q.w * t + cross(qv, t)
+            return v.addV(t.mulS(q.w).addV(qv.cross(t)));
+        }
+
+        pub fn rot2(q: @This(), v: V3) @This() {
+            // no intermediate quats = optimized closed form
+            const qv = v3FromQuat(q);
+            // t = 2 * cross(qv, v);
+            const t = qv.cross(v).mulS(2.0);
+            // v' = v + q.w * t + cross(qv, t)
+            const result = v.addV(t.mulS(q.w).addV(qv.cross(t)));
+            return .{ .w = q.w, .x = result.data[0], .y = result.data[1], .z = result.data[2] };
         }
 
         pub fn lerp(a: @This(), b: @This(), t: T) @This() {
@@ -229,7 +256,7 @@ pub fn Quaternion(comptime T: type) type {
 
             const w1 = @sin(1 - t) * theta / sin_theta;
             const w2 = @sin(t * theta) / sin_theta;
-            return a.v4FromQuat().mulS(w1).addV(b.v4FromQuat().mulS(w2)).quatFromVec();
+            return a.v4FromQuat().mulS(w1).addV(b.v4FromQuat().mulS(w2)); // .quatFromVec();
         }
     };
 }
@@ -237,3 +264,63 @@ pub fn Quaternion(comptime T: type) type {
 // example:
 // const q = quatFromAxisAngle(.{0, 1, 0}, std.math.degToRad(45));
 // const rot = quatToMat4(q);
+
+test "Quaternions" {
+    const T: type = f32;
+    const V3 = Vec(T, 3);
+    // const V4 = Vec(T, 4);
+    const Q4 = Quaternion(T);
+
+    // check types
+    const q1: Q4 = .{};
+    const v3_1 = q1.v3FromQuat();
+    try std.testing.expectEqualStrings(@typeName(@TypeOf(v3_1)), "Engine.Engine1.Math.Vec.Vector(f32,3)");
+
+    const v4_1 = q1.v4FromQuat();
+    try std.testing.expectEqualStrings(@typeName(@TypeOf(v4_1)), "Engine.Engine1.Math.Vec.Vector(f32,4)");
+
+    const angle: T = std.math.degreesToRadians(45);
+    const axis = V3{ .data = .{ 0, 1, 0 } };
+    const q2 = Q4.quatFromAxisAngle(axis, angle);
+    try std.testing.expectEqualStrings(@typeName(@TypeOf(q2)), "Engine.Engine1.Math.Quat.Quaternion(f32)");
+
+    // check axis-angle
+    const q3 = Q4.quatFromAxisAngle(axis, angle);
+    try std.testing.expectApproxEqAbs(q3.w, 0.9238795, 1e-4);
+    try std.testing.expectApproxEqAbs(q3.x, 0, 1e-4);
+    try std.testing.expectApproxEqAbs(q3.y, 0.38268346, 1e-4);
+    try std.testing.expectApproxEqAbs(q3.z, 0, 1e-4);
+    const q3_len = q3.len();
+    try std.testing.expectApproxEqAbs(1, q3_len, 1e-4);
+
+    const axis1 = q3.axisFromQuat();
+    try std.testing.expectApproxEqAbs(axis.data[0], axis1.data[0], 1e-4);
+    try std.testing.expectApproxEqAbs(axis.data[1], axis1.data[1], 1e-4);
+    try std.testing.expectApproxEqAbs(axis.data[2], axis1.data[2], 1e-4);
+    const angle1 = q3.angleFromQuat();
+    try std.testing.expectApproxEqAbs(angle, angle1, 1e-4);
+
+    // norm
+    var q4: Q4 = .{ .w = 2, .x = 2, .y = 2, .z = 2 };
+    q4 = q4.norm();
+    try std.testing.expectApproxEqAbs(q4.w, 0.5, 1e-4);
+    try std.testing.expectApproxEqAbs(q4.x, 0.5, 1e-4);
+    try std.testing.expectApproxEqAbs(q4.y, 0.5, 1e-4);
+    try std.testing.expectApproxEqAbs(q4.z, 0.5, 1e-4);
+
+    // mag + len
+    const len1 = q4.len();
+    const len2 = q4.mag();
+    try std.testing.expectEqual(1, len1);
+    try std.testing.expectEqual(1, len2);
+    try std.testing.expectEqual(1, q3_len);
+
+    // rotation
+    const q = Q4.quatFromAxisAngle(.{ .data = .{ 0, 1, 0 } }, std.math.degreesToRadians(90));
+    const v: V3 = .{ .data = .{ 1, 0, 0 } };
+    const rot_vec = Q4.rot1(q, v);
+    try std.testing.expectApproxEqAbs(0, rot_vec.data[0], 1e-4);
+    try std.testing.expectApproxEqAbs(0, rot_vec.data[1], 1e-4);
+    try std.testing.expectApproxEqAbs(-1, rot_vec.data[2], 1e-4);
+    // success
+}

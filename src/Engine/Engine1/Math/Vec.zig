@@ -1,5 +1,5 @@
 const std = @import("std");
-const Quat = @import("Quat.zig");
+const Quat = @import("Quat.zig").Quaternion;
 const Matrix = @import("Mat.zig").Matrix;
 // zero, x, y, z, w, (S/V) {add, sub, mul, div}, len, norm, cross, lookAt
 
@@ -11,8 +11,6 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
         else => @compileError("Invalid Type."),
     }
 
-    const Q4 = Quat.Quaternion(T);
-
     return struct {
         data: @Vector(N, T) = @as(@Vector(N, T), [_]T{0} ** N),
 
@@ -23,14 +21,6 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
         pub fn init(scalar: T) @This() {
             // init a v3 from scalar
             return .{ .data = @as(@Vector(N, T), @splat(scalar)) };
-        }
-
-        pub fn quatFromVec(v: @This()) Q4 {
-            return switch (N) {
-                3 => .{ .w = 0, .x = v.data[1], .y = v.data[2], .z = v.data[3] },
-                4 => .{ .w = v.data[0], .x = v.data[1], .y = v.data[2], .z = v.data[3] },
-                else => unreachable,
-            };
         }
 
         pub fn sum(self: @This()) T {
@@ -145,3 +135,5 @@ pub fn lookAt(comptime T: type, eye: Vector(T, 3), center: Vector(T, 3), up: Vec
         },
     };
 }
+
+test "Vectors" {}

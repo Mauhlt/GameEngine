@@ -119,9 +119,9 @@ pub fn persp(comptime T: type, fovy: T, aspect: T, zNear: T, zFar: T) Matrix(T, 
     };
 }
 
-test "Basics" {
+test "Matrix" {
     // testing matrix multiplication
-    const M2 = Matrix(2, f32);
+    const M2 = Matrix(f32, 2);
     const a: M2 = .{ .data = .{
         .{ 2, 9 },
         .{ 3, 7 },
@@ -130,7 +130,7 @@ test "Basics" {
         .{ 3, 7 },
         .{ 2, 9 },
     } };
-    const c = a.mulM1(b);
+    const c = a.mulM(b);
 
     const d: [4]f32 = .{ 27, 31, 76, 81 };
     var k: usize = 0;
