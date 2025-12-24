@@ -64,9 +64,9 @@ current_frame: u32 = 0,
 framebuffer_resized: bool = false,
 start: i128 = 0,
 current: i128 = 0,
-// models
-vertices: []Vertex = undefined,
-indices: []u16 = undefined,
+// models = auto-loaded for now
+vertices: [4]Vertex = Tri.vertices,
+indices: [6]u16 = Tri.indices,
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -76,10 +76,6 @@ pub fn init(
 ) !Engine {
     // _ = allo;
     var self: Engine = .{};
-
-    // load model
-    self.vertices = try allo.dupe(Vertex, @ptrCast(&Tri.vertices));
-    self.indices = try allo.dupe(u16, @ptrCast(Tri.indices));
 
     // required extensions
     const ries = [_][*:0]const u8{
@@ -112,15 +108,18 @@ pub fn init(
         self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
 
     // pipeline
-    self.descriptor_set = try self.createDescriptorSetLayout();
+    self.descriptor_set_layout = try self.createDescriptorSetLayout();
     self.pipeline_layout = try self.createPipelineLayout();
     self.pipeline = try self.createGraphicsPipeline(allo);
 
     // buffers
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
-    try self.createVertexBuffer(&vertices);
-    try self.createIndexBuffer(&indices);
+    try self.createVertexBuffer(&self.vertices);
+    try self.createIndexBuffer(&self.indices);
+    try self.createUniformBuffers();
+    try self.createDescriptorPool();
+    try self.createDescriptorSets();
 
     // sync objects
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
@@ -1135,7 +1134,7 @@ fn drawFrame(self: *Engine) !void {
         else => error.FailedToAcquireNextImage,
     };
 
-    updateUniformBuffer(self.current_frame);
+    self.updateUniformBuffer(self.current_frame);
 
     try switch (vk.resetFences(self.device, 1, &self.in_flight_fences[self.current_frame])) {
         .success => {},
