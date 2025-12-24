@@ -121,25 +121,35 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
             }
             std.debug.print("\n", .{});
         }
-    };
-}
 
-pub fn ortho(comptime T: type, left: T, right: T, bot: T, top: T, near: T, far: T) Matrix(T, 4) {
-    return .{
-        .{ 2.0 / (right - left), 0, 0, 0 },
-        .{ 0, 2.0 / (top - bot), 0, 0 },
-        .{ 0, 0, -2.0 / (far - near), 0 },
-        .{ -(right + left) / (right - left), -(top + bot) / (top - bot), -(far + near) / (far - near), 1 },
-    };
-}
+        pub fn ortho(left: T, right: T, bot: T, top: T, near: T, far: T) @This() {
+            return switch (N) {
+                4 => .{
+                    .data = .{
+                        .{ 2.0 / (right - left), 0, 0, 0 },
+                        .{ 0, 2.0 / (top - bot), 0, 0 },
+                        .{ 0, 0, -2.0 / (far - near), 0 },
+                        .{ -(right + left) / (right - left), -(top + bot) / (top - bot), -(far + near) / (far - near), 1 },
+                    },
+                },
+                else => unreachable,
+            };
+        }
 
-pub fn persp(comptime T: type, fovy: T, aspect: T, zNear: T, zFar: T) Matrix(T, 4) {
-    const f = 1.0 / @tan(fovy * 0.5);
-    return .{
-        .{ f / aspect, 0, 0, 0 },
-        .{ 0, f, 0, 0 },
-        .{ 0, 0, (zFar + zNear) / (zNear - zFar), -1 },
-        .{ 0, 0, (2 * zFar * zNear) / (zNear - zFar), 0 },
+        pub fn persp(fovy: T, aspect: T, zNear: T, zFar: T) @This() {
+            const f = 1.0 / @tan(fovy * 0.5);
+            return switch (N) {
+                4 => .{
+                    .data = .{
+                        .{ f / aspect, 0, 0, 0 },
+                        .{ 0, f, 0, 0 },
+                        .{ 0, 0, (zFar + zNear) / (zNear - zFar), -1 },
+                        .{ 0, 0, (2 * zFar * zNear) / (zNear - zFar), 0 },
+                    },
+                },
+                else => unreachable,
+            };
+        }
     };
 }
 

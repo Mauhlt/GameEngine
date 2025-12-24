@@ -8,6 +8,8 @@ const UBO = @import("UniformBufferObject.zig");
 // Math
 const Vec = @import("Math/Vec.zig");
 const Mat = @import("Math/Mat.zig");
+const V3 = Vec.Vector(f32, 3);
+const M4 = Mat.Matrix(f32, 4);
 // Model
 const Tri = @import("Models/Triangle.zig");
 // Vulkan
@@ -1109,6 +1111,11 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     const delta_time: f32 = @floatFromInt(current - self.start);
 
     const ubo: UBO = .{};
+    const eye = M4.eye();
+    const angle = delta_time * std.math.degreesToRadians(@as(f32, 90.0));
+    const z = V3.new([_]f32{ 0, 0, 1 });
+    ubo.model = eye.rotate(angle, z);
+
     ubo.model = Mat.rotate(Mat.Mat4.eye(), delta_time * std.math.degreesToRadians(@as(f32, 90.0)), Vec.Vec3.z());
     ubo.view = Mat.lookAt(Vec.Vec3.init(2), Vec.Vec3.init(0), Vec.Vec3.z());
     const rads = std.math.degreesToRadians(@as(f32, 45.0));
