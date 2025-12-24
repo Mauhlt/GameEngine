@@ -102,14 +102,14 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
         pub fn cross(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
             std.debug.assert(N >= 3 and N <= 4);
 
-            const c1 = @Vector(N, T){ self.data[1], self.data[2], self.data[0] };
-            const c2 = @Vector(N, T){ other.data[2], other.data[0], other.data[1] };
-            const c3 = @Vector(N, T){ self.data[2], self.data[0], self.data[1] };
-            const c4 = @Vector(N, T){ other.data[1], other.data[2], other.data[0] };
+            const c1 = @Vector(3, T){ self.data[1], self.data[2], self.data[0] };
+            const c2 = @Vector(3, T){ other.data[2], other.data[0], other.data[1] };
+            const c3 = @Vector(3, T){ self.data[2], self.data[0], self.data[1] };
+            const c4 = @Vector(3, T){ other.data[1], other.data[2], other.data[0] };
             const out = (c1 * c2) - (c3 * c4);
             return switch (N) {
                 3 => .{ .data = out },
-                4 => .{ .data = @Vector(N, T){ out, 0 } },
+                4 => .{ .data = @Vector(N, T){ out[0..3].*, 0 } },
                 else => unreachable,
             };
         }
@@ -118,21 +118,29 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
             // a + t * (b - a) = (b - a) * t + a
             return b.subV(a).mulS(t).addV(a);
         }
-    };
-}
 
-pub fn lookAt(comptime T: type, eye: Vector(T, 3), center: Vector(T, 3), up: Vector(T, 3)) Matrix(4, T) {
-    const f = center.subV(eye).norm();
-    const s = f.cross(up).norm();
-    const u = s.cross(f);
+        pub fn lookAt(eye: @This(), center: @TypeOf(eye), up: @TypeOf(eye)) Matrix(T, 4) {
+            // works for V3 and V4s
+            switch (N) {
+                3 => {},
+                4 => std.debug.assert(center.data[3] == 0),
+                2 => unreachable,
+                else => unreachable,
+            }
+            // works for 3 and 4
+            const f = center.subV(eye).norm();
+            const s = f.cross(up).norm();
+            const u = s.cross(f);
 
-    return .{
-        .data = .{
-            .{ s[0], u[0], -f[0], 0 },
-            .{ s[1], u[1], -f[1], 0 },
-            .{ s[2], u[2], -f[2], 0 },
-            .{ -s.dot(eye), -u.dot(eye), f.dot(eye), 1 },
-        },
+            return .{
+                .data = .{
+                    .{ s.data[0], u.data[0], -f.data[0], 0 },
+                    .{ s.data[1], u.data[1], -f.data[1], 0 },
+                    .{ s.data[2], u.data[2], -f.data[2], 0 },
+                    .{ -s.dot(eye), -u.dot(eye), f.dot(eye), 1 },
+                },
+            };
+        }
     };
 }
 

@@ -9,6 +9,7 @@ const UBO = @import("UniformBufferObject.zig");
 const Vec = @import("Math/Vec.zig");
 const Mat = @import("Math/Mat.zig");
 const V3 = Vec.Vector(f32, 3);
+const V4 = Vec.Vector(f32, 4);
 const M4 = Mat.Matrix(f32, 4);
 // Model
 const Tri = @import("Models/Triangle.zig");
@@ -139,8 +140,9 @@ pub fn init(
 
 pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
     // model
-    allo.free(self.vertices);
-    allo.free(self.indices);
+    _ = allo;
+    // allo.free(self.vertices);
+    // allo.free(self.indices);
 
     self.destroySwapchain();
 
@@ -999,6 +1001,7 @@ fn createDescriptorPool(self: *const Engine) !vk.DescriptorPool {
 
 fn createDescriptorSets(self: *Engine) !void {
     var layouts: [MAX_FRAMES_IN_FLIGHT]vk.DescriptorSetLayout = undefined;
+
     const alloc_info = vk.DescriptorSetAllocateInfo{
         .descriptor_pool = self.descriptor_pool,
         .descriptor_set_count = MAX_FRAMES_IN_FLIGHT,
@@ -1009,6 +1012,25 @@ fn createDescriptorSets(self: *Engine) !void {
         .success => {},
         else => error.FailedToAllocateDescriptorSets,
     };
+
+    for (0..MAX_FRAMES_IN_FLIGHT) |i| {
+        const buffer_info = vk.DescriptorBufferInfo{
+            .buffer = self.uniform_buffers[i],
+            .offset = 0,
+            .range = @sizeOf(UBO),
+        };
+
+        const write = vk.WriteDescriptorSet{
+            .dst_set = self.descriptor_sets[i],
+            .dst_binding = 0,
+            .dst_array_element = 0,
+            .descriptor_type = .uniform_buffer,
+            .descriptor_count = 1,
+            .p_buffer_info = &buffer_info,
+        };
+
+        vk.updateDescriptorSets(self.device, 1, &write, 0, null);
+    }
 }
 
 fn allocCommandBuffers(self: *Engine) !void {
@@ -1110,20 +1132,28 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     const current = std.time.nanoTimestamp();
     const delta_time: f32 = @floatFromInt(current - self.start);
 
-    const ubo: UBO = .{};
+    var ubo: UBO = .{};
     const eye = M4.eye();
     const angle = delta_time * std.math.degreesToRadians(@as(f32, 90.0));
-    const z = V3.new([_]f32{ 0, 0, 1 });
-    ubo.model = eye.rotate(angle, z);
+    const z3 = V3.new([_]f32{ 0, 0, 1 });
+    const z4 = V4.new([_]f32{ 0, 0, 1, 0 });
+    ubo.model = @as([4][4]f32, eye.rotate(angle, z4).data);
 
-    ubo.model = Mat.rotate(Mat.Mat4.eye(), delta_time * std.math.degreesToRadians(@as(f32, 90.0)), Vec.Vec3.z());
-    ubo.view = Mat.lookAt(Vec.Vec3.init(2), Vec.Vec3.init(0), Vec.Vec3.z());
-    const rads = std.math.degreesToRadians(@as(f32, 45.0));
-    ubo.proj = Mat.persp(f32, rads, @as(f32, @floatFromInt(self.swapchain_extent.width)) / @as(f32, @floatFromInt(self.swapchain_extent.height)), 0.1, 0.5);
+    const dos = V3.init(2);
+    ubo.view = @as([4][4]f32, dos.lookAt(V3.init(0), z3).data);
+
+    const fovy = std.math.degreesToRadians(@as(f32, 45.0));
+    const aspect = @as(f32, @floatFromInt(self.swapchain_extent.width)) / @as(f32, @floatFromInt(self.swapchain_extent.height));
+    ubo.proj = @as([4][4]f32, M4.persp(fovy, aspect, 0.1, 0.5).data);
+
+    // ubo.model = Mat.rotate(Mat.Mat4.eye(), delta_time * std.math.degreesToRadians(@as(f32, 90.0)), Vec.Vec3.z());
+    // ubo.view = Mat.lookAt(Vec.Vec3.init(2), Vec.Vec3.init(0), Vec.Vec3.z());
+    // ubo.proj = Mat.persp(f32, rads, ratio, 0.1, 0.5);
+
     ubo.proj[1][1] *= -1;
 
     var new_map: [*]UBO = @ptrCast(@alignCast(self.uniform_buffer_maps[current_image]));
-    @memcpy(new_map[0..1], ubo);
+    @memcpy(new_map[0..1], @as([*]UBO, @ptrCast(&ubo))[0..1]);
 }
 
 fn drawFrame(self: *Engine) !void {
