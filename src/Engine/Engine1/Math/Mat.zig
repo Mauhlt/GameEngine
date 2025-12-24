@@ -53,6 +53,7 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
         }
 
         pub fn mulM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
+            // i think this is post - double check
             // row major order
             // a b c     j k l     aj + bm + cp;  ak + bn + cq;  al + bo + cr;    aj + bm + cp;  dj + em + dp;  gj + hm + ip;
             // d e f  *  m n o  =  dj + em + dp;  dk + en + fq;  dl + eo + fr; =  ak + bn + cq;  dk + en + fq;  gk + hn + iq;
@@ -67,15 +68,38 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
             }
             return out;
         }
-        // 2 3 * 4 2 = 2*4 + 3*1; 2*2 + 3*3;
-        // 3 2   1 3   3*4 + 2*1; 3*2 + 2*3;
-        //
-        // 2 3 1 * 4 2 1 = 2*4 + 3*1 + 1*2;
-        // 3 2 1   1 3 4
-        // 4 2 5   2 0 2
-        //
-        // block version of above:
-        // 2*4 + 3*1 + 1*2;
+
+        pub fn rotate(m: @This(), angle: T, axis: Vec.Vector(T, N)) @TypeOf(m) {
+            // angle = in rads
+            const norm = axis.norm();
+            const x = norm.data[0];
+            const y = norm.data[1];
+            const z = switch (N) {
+                2 => 0,
+                3, 4 => norm.data[2],
+                else => unreachable,
+            };
+            // trig
+            const c = @cos(angle);
+            const s = @sin(angle);
+            const t = 1.0 - c;
+            // construct rotation matrix from axis
+            var r: @This() = .eye();
+            r.data[0][0] = t * x * x + c;
+            r.data[0][1] = t * x * y - s * z;
+            r.data[1][0] = t * x * y + s * z;
+            r.data[1][1] = t * y * y + c;
+            switch (N) {
+                2 => {},
+                3, 4 => {
+                    r.data[0][2] = t * x * z + s * y;
+                    r.data[1][2] = t * y * z - s * x;
+                    r.data[2][2] = t * z * z + c;
+                },
+                else => unreachable,
+            }
+            return m.mulM(r);
+        }
 
         pub fn transpose(self: @This()) @TypeOf(self) {
             var new: @This() = .{};
@@ -91,7 +115,7 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
         pub fn print(self: @This()) void {
             for (0..N) |j| {
                 for (0..N) |i| {
-                    std.debug.print("{} ", .{self.data[i][j]});
+                    std.debug.print("{} ", .{@round(self.data[i][j])});
                 }
                 std.debug.print("\n", .{});
             }
@@ -119,7 +143,7 @@ pub fn persp(comptime T: type, fovy: T, aspect: T, zNear: T, zFar: T) Matrix(T, 
     };
 }
 
-test "Matrix" {
+test "Matrix Multiplication" {
     // testing matrix multiplication
     const M2 = Matrix(f32, 2);
     const a: M2 = .{ .data = .{
@@ -140,4 +164,81 @@ test "Matrix" {
             k += 1;
         }
     }
+}
+
+test "Matrix Pre vs Post" {
+    // testing multiplication again
+    const M4 = Matrix(f32, 4);
+    const m1: M4 = .{
+        .data = .{
+            .{ 1, 5, 9, 13 },
+            .{ 2, 6, 10, 14 },
+            .{ 3, 7, 11, 15 },
+            .{ 4, 8, 12, 16 },
+        },
+    };
+    const m2: M4 = .{
+        .data = .{
+            .{ 17, 21, 25, 29 },
+            .{ 18, 22, 26, 30 },
+            .{ 19, 23, 27, 31 },
+            .{ 20, 24, 28, 32 },
+        },
+    };
+    const m3_post = m1.mulM(m2);
+    // const m3_pre = m2.mulM(m1);
+    // expected results
+    const m4_post: M4 = .{
+        .data = .{
+            .{ 250, 260, 270, 280 },
+            .{ 618, 644, 670, 696 },
+            .{ 986, 1028, 1070, 1112 },
+            .{ 1354, 1412, 1470, 1528 },
+        },
+    };
+    // const m4_pre: M4 = m4.transpose();
+
+    const tol: f32 = 1e-8;
+    for (0..m3_post.data.len) |i| {
+        for (0..m3_post.data[i].len) |j| {
+            try std.testing.expectApproxEqAbs(m3_post.data[i][j], m4_post.data[i][j], tol);
+            // try std.testing.expectApproxEqAbs(m3_pre.data[i][j], m4_pre.data[i][j], tol);
+        }
+    }
+}
+
+test "Rotation" {
+    const M4 = Matrix(f32, 4);
+    const tol: f32 = 1e-4;
+    const m1: M4 = .eye();
+    const m2 = m1.rotate(@as(f32, std.math.pi / @as(f32, @floatFromInt(2))), .{ .data = .{ 0, 0, 1, 0 } });
+    // m2.print();
+    const m2_expected: M4 = .{
+        .data = .{
+            .{ 0, 1, 0, 0 },
+            .{ -1, 0, 0, 0 },
+            .{ 0, 0, 1, 0 },
+            .{ 0, 0, 0, 1 },
+        },
+    };
+    // m2_expected.print();
+    for (0..m2.data.len) |i| {
+        for (0..m2.data[i].len) |j| {
+            std.testing.expectApproxEqAbs(m2.data[i][j], m2_expected.data[i][j], tol) catch |err| {
+                m2.print();
+                m2_expected.print();
+                std.debug.print("Failed on: col: {}, row: {}\n", .{ i, j });
+                std.debug.print("Got: {}, Expected: {}\n", .{ m2.data[i][j], m2_expected.data[i][j] });
+                return err;
+            };
+        }
+    }
+    const m3 = m2.rotate(@as(f32, std.math.pi / @as(f32, @floatFromInt(2))), .{ .data = .{ 0, 0, 1, 0 } });
+    const m3_expected: M4 = .eye();
+    for (0..m3.data.len) |i| {
+        for (0..m3.data.len) |j| {
+            try std.testing.expectApproxEqAbs(m3.data[i][j], m3_expected.data[i][j], tol);
+        }
+    }
+    // m3.print();
 }

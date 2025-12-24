@@ -118,7 +118,7 @@ pub fn init(
     try self.createVertexBuffer(&self.vertices);
     try self.createIndexBuffer(&self.indices);
     try self.createUniformBuffers();
-    try self.createDescriptorPool();
+    self.descriptor_pool = try self.createDescriptorPool();
     try self.createDescriptorSets();
 
     // sync objects
@@ -142,7 +142,7 @@ pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
 
     self.destroySwapchain();
 
-    vk.destroyDescriptorPool(self.device, self.decriptor_pool, null);
+    vk.destroyDescriptorPool(self.device, self.descriptor_pool, null);
     vk.destroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
 
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
@@ -964,20 +964,20 @@ fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropert
     return error.FailedTOFindSuitableMemoryType;
 }
 
-fn createUniformBuffers(self: *const Engine) !void {
+fn createUniformBuffers(self: *Engine) !void {
     const size = @sizeOf(UBO);
 
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         try self.createBuffer(size, .init(.uniform_buffer_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &self.uniform_buffers[i], &self.uniform_buffer_memories[i]);
 
-        try switch (vk.mapMemory(self.device, self.uniform_buffer_memories[i], 0, size, .initEmpty(), &self.uniform_buffer_memories[i])) {
+        try switch (vk.mapMemory(self.device, self.uniform_buffer_memories[i], 0, size, .initEmpty(), &self.uniform_buffer_maps[i])) {
             .success => {},
             else => error.FailedToMapMemory,
         };
     }
 }
 
-fn createDescriptorPool(self: *const Engine) !void {
+fn createDescriptorPool(self: *const Engine) !vk.DescriptorPool {
     const pool_size = vk.DescriptorPoolSize{
         .descriptor_count = MAX_FRAMES_IN_FLIGHT,
     };
@@ -1106,12 +1106,13 @@ fn createFence(self: *const Engine) !vk.Fence {
 
 fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     const current = std.time.nanoTimestamp();
-    const time: f32 = @floatFromInt(current - self.start);
+    const delta_time: f32 = @floatFromInt(current - self.start);
 
     const ubo: UBO = .{};
-    ubo.model = Mat.rotate(Mat.Mat4.eye(), time * std.math.degreesToRadians(@as(f32, 90.0)), Vec.Vec3.z());
+    ubo.model = Mat.rotate(Mat.Mat4.eye(), delta_time * std.math.degreesToRadians(@as(f32, 90.0)), Vec.Vec3.z());
     ubo.view = Mat.lookAt(Vec.Vec3.init(2), Vec.Vec3.init(0), Vec.Vec3.z());
-    ubo.proj = Mat.persp(f32, std.math.degreesToRadians(@as(f32, 45.0)), @as(f32, @floatFromInt(self.swapchain_extent.width)) / @as(f32, @floatFromInt(self.swapchain_extent.height)), 0.1, 0.5);
+    const rads = std.math.degreesToRadians(@as(f32, 45.0));
+    ubo.proj = Mat.persp(f32, rads, @as(f32, @floatFromInt(self.swapchain_extent.width)) / @as(f32, @floatFromInt(self.swapchain_extent.height)), 0.1, 0.5);
     ubo.proj[1][1] *= -1;
 
     var new_map: [*]UBO = @ptrCast(@alignCast(self.uniform_buffer_maps[current_image]));
