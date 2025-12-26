@@ -120,36 +120,44 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
             return .{ .data = self.data[i] };
         }
 
-        pub fn rotate(m: @This(), angle: T, axis: Vector(T, N)) @TypeOf(m) {
-            // angle = in rads
-            const norm = axis.norm();
-            const x = norm.data[0];
-            const y = norm.data[1];
-            const z = switch (N) {
-                2 => 0,
-                3, 4 => norm.data[2],
+        pub fn rotate(self: @This(), angle: f32, axis: Vector(T, 3)) @TypeOf(self) {
+            switch (N) {
+                4 => {},
+                2, 3 => unreachable,
                 else => unreachable,
-            };
-            // trig
+            }
+
+            const a = axis.norm();
             const c = @cos(angle);
             const s = @sin(angle);
             const t = 1.0 - c;
-            // construct rotation matrix from axis
-            var r: @This() = .eye();
-            r.data[0][0] = t * x * x + c;
-            r.data[0][1] = t * x * y - s * z;
-            r.data[1][0] = t * x * y + s * z;
-            r.data[1][1] = t * y * y + c;
-            switch (N) {
-                2 => {},
-                3, 4 => {
-                    r.data[0][2] = t * x * z + s * y;
-                    r.data[1][2] = t * y * z - s * x;
-                    r.data[2][2] = t * z * z + c;
+
+            const x = a.data[0];
+            const y = a.data[1];
+            const z = a.data[2];
+
+            const r00 = t * x * x + c;
+            const r01 = t * x * y - s * z;
+            const r02 = t * x * z + s * y;
+
+            const r10 = t * x * y + s * z;
+            const r11 = t * y * y + c;
+            const r12 = t * y * z - s * x;
+
+            const r20 = t * x * z - s * y;
+            const r21 = t * y * z + s * x;
+            const r22 = t * z * z + c;
+
+            const r = .{
+                .data = .{
+                    .{ r00, r10, r20, 0 },
+                    .{ r01, r11, r21, 0 },
+                    .{ r02, r12, r22, 0 },
+                    .{ 0, 0, 0, 1 },
                 },
-                else => unreachable,
-            }
-            return m.mulM(r);
+            };
+
+            return self.mulM(r);
         }
 
         pub fn transpose(self: @This()) @TypeOf(self) {

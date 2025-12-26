@@ -1132,42 +1132,35 @@ fn createFence(self: *const Engine) !vk.Fence {
 }
 
 fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
-    // const current = std.time.nanoTimestamp();
-    // const delta_time: f32 = @floatFromInt(current - self.start);
-
-    const m4 = M4.eye();
-    const m4t = m4.transpose();
-    m4.print();
-    m4t.print();
+    const current = std.time.nanoTimestamp();
+    const delta_time: f32 = @floatFromInt(current - self.start);
 
     var ubo: UBO = .{};
-    ubo.model = M4.eye().toMat();
-    ubo.view = M4.eye().toMat();
-    ubo.proj = M4.eye().toMat();
+    // ubo.view = M4.eye().transpose().toMat();
+    // ubo.proj = M4.eye().transpose().toMat();
 
-    // const eye = M4.eye();
-    // const angle = delta_time * std.math.degreesToRadians(@as(f32, 90.0));
-    // const z3 = V3.new([_]f32{ 0, 0, 1 });
-    // _ = z3;
-    // const z4 = V4.new([_]f32{ 0, 0, 1, 0 });
-    // const model = eye.rotate(angle, z4);
-    // model.print();
-    // ubo.model = model.transpose().toMat();
+    const eye = M4.eye();
+    const angle = std.math.degreesToRadians(90.0) * delta_time;
+    const axis1 = V3.new([_]f32{ 0, 0, 1 });
+    const model = eye.rotate(angle, axis1);
+    ubo.model = model.toMat();
 
-    // const dos = V3.init(2);
-    // const view = dos.lookAt(V3.init(0), z3);
-    // view.print();
-    // ubo.view = view.toMat();
-    //
-    // const fovy = std.math.degreesToRadians(@as(f32, 45.0));
-    // const asp = self.aspect();
-    // const proj = M4.persp(fovy, asp, 0.1, 0.5);
-    // proj.print();
-    // ubo.proj = proj.toMat();
+    const axis2 = V3.init(2);
+    const axis3: V3 = .{};
+    const view = axis2.lookAt(axis3, axis1);
 
-    // ubo.model = Mat.rotate(Mat.Mat4.eye(), delta_time * std.math.degreesToRadians(@as(f32, 90.0)), Vec.Vec3.z());
-    // ubo.view = Mat.lookAt(Vec.Vec3.init(2), Vec.Vec3.init(0), Vec.Vec3.z());
-    // ubo.proj = Mat.persp(f32, rads, ratio, 0.1, 0.5);
+    view.print();
+    ubo.view = view.transpose().toMat();
+
+    const fovy = std.math.degreesToRadians(@as(f32, 45.0));
+    const asp = self.aspect();
+    const proj = M4.persp(fovy, asp, 0.1, 0.5);
+    proj.print();
+    ubo.proj = proj.transpose().toMat();
+
+    // model = rotate(mat4(1.0), time * 90.0, vecZ)
+    // view = lookAt(vec.new(2), vec3.new(0), vec3.z)
+    // proj = persp(45, width/height, 0.1, 10.0)
 
     ubo.proj[1][1] *= -1;
 

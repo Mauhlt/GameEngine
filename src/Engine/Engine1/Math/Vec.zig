@@ -136,28 +136,57 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
         }
 
         pub fn lookAt(eye: @This(), center: @TypeOf(eye), up: @TypeOf(eye)) Matrix(T, 4) {
-            // works for V3 and V4s
+            var eye1 = eye;
+            var center1 = center;
+            var up1 = up;
+
             switch (N) {
                 3 => {},
-                4 => std.debug.assert(center.data[3] == 0),
+                4 => {
+                    eye1.data[3] = 0;
+                    center1.data[3] = 0;
+                    up1.data[3] = 0;
+                },
                 2 => unreachable,
                 else => unreachable,
             }
-            // works for 3 and 4
-            const f = center.subV(eye).norm();
-            const s = f.cross(up).norm();
-            const u = s.cross(f);
+
+            const f = center1.subV(eye1).norm(); // forward
+            const s = f.cross(up1).norm(); // right
+            const u = s.cross(f); // up
 
             return .{
                 .data = .{
                     .{ s.data[0], u.data[0], -f.data[0], 0 },
                     .{ s.data[1], u.data[1], -f.data[1], 0 },
                     .{ s.data[2], u.data[2], -f.data[2], 0 },
-                    .{ -s.dot(eye), -u.dot(eye), f.dot(eye), 1 },
+                    .{ -s.dot(eye1), -u.dot(eye1), f.dot(eye1), 1 },
                 },
             };
         }
     };
 }
 
-test "Vectors" {}
+test "Vectors" {
+    const V3 = Vector(f32, 3);
+    const eye: V3 = .{ .data = [_]f32{ 0, 0, 5 } };
+    const center: V3 = .{ .data = [_]f32{ 0, 0, 0 } };
+    const up: V3 = .{ .data = [_]f32{ 0, 1, 0 } };
+
+    const mat = eye.lookAt(center, up);
+    const exp: Matrix(f32, 4) = .{
+        .data = .{
+            .{ 1, 0, 0, 0 },
+            .{ 0, 1, 0, 0 },
+            .{ 0, 0, 1, -5 },
+            .{ 0, 0, 0, 1 },
+        },
+    };
+    const tol: f32 = 1e-8;
+
+    for (0..4) |i| {
+        for (0..4) |j| {
+            try std.testing.expectApproxEqAbs(mat.data[i][j], exp.data[i][j], tol);
+        }
+    }
+}
