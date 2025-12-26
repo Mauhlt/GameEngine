@@ -74,24 +74,25 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
             }
         }
 
-        pub fn addM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
+        pub fn addE(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
             return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) + @as(@Vector(N * N, T), self.data)) };
         }
 
-        pub fn subM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
+        pub fn subE(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
             return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) - @as(@Vector(N * N, T), self.data)) };
         }
 
         pub fn mulE(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
+            // element-wise multiplication
             return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) * @as(@Vector(N * N, T), self.data)) };
         }
 
-        pub fn divM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
+        pub fn divE(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
             return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) / @as(@Vector(N * N, T), self.data)) };
         }
 
         pub fn mulM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            // i think this is post - double check
+            // matrix multiplication
             // row major order
             // a b c     j k l     aj + bm + cp;  ak + bn + cq;  al + bo + cr;    aj + bm + cp;  dj + em + dp;  gj + hm + ip;
             // d e f  *  m n o  =  dj + em + dp;  dk + en + fq;  dl + eo + fr; =  ak + bn + cq;  dk + en + fq;  gk + hn + iq;
