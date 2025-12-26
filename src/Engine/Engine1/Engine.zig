@@ -6,11 +6,12 @@ const Vertex = @import("Vertex.zig");
 const Window = @import("Window.zig");
 const UBO = @import("UniformBufferObject.zig");
 // Math
-const Vec = @import("Math/Vec.zig");
-const Mat = @import("Math/Mat.zig");
-const V3 = Vec.Vector(f32, 3);
-const V4 = Vec.Vector(f32, 4);
-const M4 = Mat.Matrix(f32, 4);
+const Vector = @import("Math/Vec.zig").Vector;
+const Matrix = @import("Math/Mat.zig").Matrix;
+const V3 = Vector(f32, 3);
+const V4 = Vector(f32, 4);
+const M4 = Matrix(f32, 4);
+const persp = @import("Math/Mat.zig").persp2;
 // Model
 const Tri = @import("Models/Triangle.zig");
 // Vulkan
@@ -1136,34 +1137,23 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     const delta_time: f32 = @floatFromInt(current - self.start);
 
     var ubo: UBO = .{};
-    // ubo.view = M4.eye().transpose().toMat();
-    // ubo.proj = M4.eye().transpose().toMat();
-
+    // model
     const eye = M4.eye();
     const angle = std.math.degreesToRadians(90.0) * delta_time;
-    const axis1 = V3.new([_]f32{ 0, 0, 1 });
-    const model = eye.rotate(angle, axis1);
+    const z_axis = V3.new([_]f32{ 0, 0, 1 });
+    const model: M4 = eye.rotate(angle, z_axis);
     ubo.model = model.toMat();
-
+    // view
     const axis2 = V3.init(2);
-    const axis3: V3 = .{};
-    const view = axis2.lookAt(axis3, axis1);
-
-    view.print();
-    ubo.view = view.transpose().toMat();
-
-    const fovy = std.math.degreesToRadians(@as(f32, 45.0));
-    const asp = self.aspect();
-    const proj = M4.persp(fovy, asp, 0.1, 0.5);
-    proj.print();
-    ubo.proj = proj.transpose().toMat();
-
-    // model = rotate(mat4(1.0), time * 90.0, vecZ)
-    // view = lookAt(vec.new(2), vec3.new(0), vec3.z)
-    // proj = persp(45, width/height, 0.1, 10.0)
-
+    const axis3: V3 = .init(0);
+    const view: M4 = axis2.lookAt(axis3, z_axis);
+    ubo.view = view.toMat();
+    // proj
+    const proj: M4 = persp(f32, std.math.degreesToRadians(45.0), self.aspect(), 0.1, 10.0);
+    ubo.proj = proj.toMat();
+    // flip = vulkan specific
     ubo.proj[1][1] *= -1;
-
+    // place on gpu
     var new_map: [*]UBO = @ptrCast(@alignCast(self.uniform_buffer_maps[current_image]));
     @memcpy(new_map[0..1], @as([*]UBO, @ptrCast(&ubo))[0..1]);
 }

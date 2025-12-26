@@ -136,33 +136,54 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
         }
 
         pub fn lookAt(eye: @This(), center: @TypeOf(eye), up: @TypeOf(eye)) Matrix(T, 4) {
-            var eye1 = eye;
-            var center1 = center;
-            var up1 = up;
-
-            switch (N) {
-                3 => {},
-                4 => {
-                    eye1.data[3] = 0;
-                    center1.data[3] = 0;
-                    up1.data[3] = 0;
-                },
-                2 => unreachable,
-                else => unreachable,
-            }
-
-            const f = center1.subV(eye1).norm(); // forward
-            const s = f.cross(up1).norm(); // right
-            const u = s.cross(f); // up
+            // cam vectors
+            const f = center.subV(eye).norm();
+            const s = f.cross(up).norm();
+            const u = s.cross(f);
 
             return .{
                 .data = .{
                     .{ s.data[0], u.data[0], -f.data[0], 0 },
                     .{ s.data[1], u.data[1], -f.data[1], 0 },
                     .{ s.data[2], u.data[2], -f.data[2], 0 },
-                    .{ -s.dot(eye1), -u.dot(eye1), f.dot(eye1), 1 },
+                    .{ -s.dot(eye), -u.dot(eye), f.dot(eye), 1 },
                 },
             };
+
+            // // eye = camera direction
+            // // up = world up (usually {0, 1, 0}) // must be perpendicular
+            // // x-axis = cross of eye and up
+            // var eye1 = eye;
+            // var target1 = target;
+            // var up1 = up;
+            //
+            // switch (N) {
+            //     3 => {},
+            //     4 => {
+            //         eye1.data[3] = 0;
+            //         target1.data[3] = 0;
+            //         up1.data[3] = 0;
+            //     },
+            //     2 => unreachable,
+            //     else => unreachable,
+            // }
+            //
+            // const zc = target.subV(eye);
+            // const xc = zc.mulS(-1).cross(up);
+            // const yc = xc.cross(zc.mulS(-1));
+            //
+            // // const f = target1.subV(eye1).norm(); // forward
+            // // const s = f.cross(up1).norm(); // right
+            // // const u = s.cross(f); // up
+            // //
+            // // return .{
+            // //     .data = .{
+            // //         .{ s.data[0], u.data[0], -f.data[0], 0 },
+            // //         .{ s.data[1], u.data[1], -f.data[1], 0 },
+            // //         .{ s.data[2], u.data[2], -f.data[2], 0 },
+            // //         .{ -s.dot(eye1), -u.dot(eye1), f.dot(eye1), 1 },
+            // //     },
+            // // };
         }
     };
 }

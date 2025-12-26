@@ -196,21 +196,6 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
             };
         }
 
-        pub fn persp(fovy: T, aspect: T, zNear: T, zFar: T) @This() {
-            const f = 1.0 / @tan(fovy * 0.5);
-            return switch (N) {
-                4 => .{
-                    .data = .{
-                        .{ f / aspect, 0, 0, 0 },
-                        .{ 0, f, 0, 0 },
-                        .{ 0, 0, (zFar + zNear) / (zNear - zFar), -1 },
-                        .{ 0, 0, (2 * zFar * zNear) / (zNear - zFar), 0 },
-                    },
-                },
-                else => unreachable,
-            };
-        }
-
         pub fn toMat(self: @This()) [N][N]T {
             return @bitCast(self.data);
         }
@@ -361,4 +346,26 @@ test "Transpose" {
             try std.testing.expectApproxEqAbs(m4.data[i][j], m5.data[i][j], tol);
         }
     }
+}
+
+pub fn persp(comptime T: type, right: T, left: T, top: T, bot: T, near: T, far: T) Matrix(T, 4) {
+    return .{
+        .data = .{
+            .{ 2 * near / (right - left), 0, (right + left) / (right - left), 0 },
+            .{ 0, 2 * near / (top - bot), (top + bot) / (top - bot), 0 },
+            .{ 0, 0, (far + near) / (near - far), 2 * far * near / (near - far) },
+            .{ 0, 0, -1, 0 },
+        },
+    };
+}
+
+pub fn persp2(comptime T: type, fov: T, aspect: T, near: T, far: T) Matrix(T, 4) {
+    return .{
+        .data = .{
+            .{ fov / aspect, 0, 0, 0 },
+            .{ 0, fov, 0, 0 },
+            .{ 0, 0, (far + near) / (near - far), -1 },
+            .{ 0, 0, (2 * far * near) / (near - far), 0 },
+        },
+    };
 }

@@ -2,6 +2,7 @@ const std = @import("std");
 const Vec = @import("Vec.zig").Vector;
 const Mat = @import("Mat.zig").Matrix;
 // Use init quaternions
+// Goal: rotate 1 point to another point
 
 pub fn Quaternion(comptime T: type) type {
     switch (@typeInfo(T)) {
@@ -33,6 +34,7 @@ pub fn Quaternion(comptime T: type) type {
         }
 
         pub fn quatFromV3(v: V3) @This() {
+            // const n = v.norm();
             return .{ .w = 0, .x = v.data[0], .y = v.data[1], .z = v.data[2] };
         }
 
@@ -214,7 +216,7 @@ pub fn Quaternion(comptime T: type) type {
             return a.inv();
         }
 
-        pub fn rot1(q: @This(), v: V3) V3 {
+        pub fn rotate(q: @This(), v: V3) V3 {
             // no intermediate quats = optimized closed form
             const qv = v3FromQuat(q);
             // t = 2 * cross(qv, v);
@@ -223,7 +225,7 @@ pub fn Quaternion(comptime T: type) type {
             return v.addV(t.mulS(q.w).addV(qv.cross(t)));
         }
 
-        pub fn rot2(q: @This(), v: V3) @This() {
+        pub fn rotate2(q: @This(), v: V3) @This() {
             // no intermediate quats = optimized closed form
             const qv = v3FromQuat(q);
             // t = 2 * cross(qv, v);
@@ -258,6 +260,10 @@ pub fn Quaternion(comptime T: type) type {
             const w2 = @sin(t * theta) / sin_theta;
             return a.v4FromQuat().mulS(w1).addV(b.v4FromQuat().mulS(w2)); // .quatFromVec();
         }
+
+        // pub fn lookAt(src: @This(), dst: @TypeOf(src)) @TypeOf(src) {
+        //     const f = dst.v3FromQuat().subV(src.v3FromQuat());
+        // }
     };
 }
 
