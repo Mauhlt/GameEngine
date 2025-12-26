@@ -12,7 +12,7 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
 
     // col major
     return struct {
-        data: [N][N]T = @bitCast(@Vector(N * N, T), @splat(0)),
+        data: [N][N]T = @bitCast(@as(@Vector(N * N, T), @splat(0))),
 
         pub fn eye() @This() {
             var self: @This() = .{};
@@ -49,46 +49,46 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
         pub fn addV(self: @This(), other: Vector(T, N)) @TypeOf(self) {
             var output = .{};
             inline for (0..N) |i| {
-                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) + @as(@Vector());
+                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) + @as(@Vector(N, T), other.data[i]);
             }
         }
 
         pub fn subV(self: @This(), other: Vector(T, N)) @TypeOf(self) {
             var output = .{};
             inline for (0..N) |i| {
-                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) - @as(@Vector());
+                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) - @as(@Vector(N, T), other.data[i]);
             }
         }
 
         pub fn mulV(self: @This(), other: Vector(T, N)) @TypeOf(self) {
             var output = .{};
             inline for (0..N) |i| {
-                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) * @as(@Vector());
+                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) * @as(@Vector(N, T), other.data[i]);
             }
         }
 
         pub fn divV(self: @This(), other: Vector(T, N)) @TypeOf(self) {
             var output = .{};
             inline for (0..N) |i| {
-                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) / @as(@Vector());
+                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) / @as(@Vector(N, T), other.data[i]);
             }
         }
 
         pub fn addE(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) + @as(@Vector(N * N, T), self.data)) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) + @as(@Vector(N * N, T), other.data)) };
         }
 
         pub fn subE(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) - @as(@Vector(N * N, T), self.data)) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) - @as(@Vector(N * N, T), other.data)) };
         }
 
         pub fn mulE(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
             // element-wise multiplication
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) * @as(@Vector(N * N, T), self.data)) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) * @as(@Vector(N * N, T), other.data)) };
         }
 
         pub fn divE(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) / @as(@Vector(N * N, T), self.data)) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) / @as(@Vector(N * N, T), other.data)) };
         }
 
         pub fn mulM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
@@ -99,9 +99,9 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
             // g h i     p q r     gj + hm + ip;  gk + hn + iq;  gl + ho + ir;    al + bo + cr;  dl + eo + fr;  gl + ho + ir;
             var out: @This() = .{};
             inline for (0..N) |i| { // row
-                var v1: VN = self.row(i);
+                var v1: Vector(T, N) = self.row(i);
                 inline for (0..N) |j| { // col
-                    const v2: VN = other.col(j);
+                    const v2: Vector(T, N) = other.col(j);
                     out.data[i][j] = v1.dot(v2);
                 }
             }
@@ -120,7 +120,7 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
             return .{ .data = self.data[i] };
         }
 
-        pub fn rotate(m: @This(), angle: T, axis: Vec.Vector(T, N)) @TypeOf(m) {
+        pub fn rotate(m: @This(), angle: T, axis: Vector(T, N)) @TypeOf(m) {
             // angle = in rads
             const norm = axis.norm();
             const x = norm.data[0];

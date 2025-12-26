@@ -1138,7 +1138,7 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     var ubo: UBO = .{};
     ubo.model = M4.eye().toMat();
     ubo.view = M4.eye().toMat();
-    ubo.proj = M4.eye().add.toMat();
+    ubo.proj = M4.eye().toMat();
 
     // const eye = M4.eye();
     // const angle = delta_time * std.math.degreesToRadians(@as(f32, 90.0));
