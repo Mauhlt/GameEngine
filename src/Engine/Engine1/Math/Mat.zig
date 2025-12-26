@@ -148,7 +148,7 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
             const r21 = t * y * z + s * x;
             const r22 = t * z * z + c;
 
-            const r = .{
+            const r: @TypeOf(self) = .{
                 .data = .{
                     .{ r00, r10, r20, 0 },
                     .{ r01, r11, r21, 0 },
@@ -283,9 +283,12 @@ test "Matrix Pre vs Post" {
 
 test "Rotation" {
     const M4 = Matrix(f32, 4);
+    const V3 = Vector(f32, 3);
     const tol: f32 = 1e-4;
     const m1: M4 = .eye();
-    const m2 = m1.rotate(@as(f32, std.math.pi / @as(f32, @floatFromInt(2))), .{ .data = .{ 0, 0, 1, 0 } });
+    const forty_five = @as(f32, std.math.pi) / @as(f32, @floatFromInt(2));
+    const axis = V3.new(.{ 0, 0, 1 });
+    const m2 = m1.rotate(forty_five, axis);
     // m2.print();
     const m2_expected: M4 = .{
         .data = .{
@@ -307,7 +310,8 @@ test "Rotation" {
             };
         }
     }
-    const m3 = m2.rotate(@as(f32, std.math.pi / @as(f32, @floatFromInt(2))), .{ .data = .{ 0, 0, 1, 0 } });
+
+    const m3 = m2.rotate(@as(f32, std.math.pi / @as(f32, @floatFromInt(2))), .{ .data = .{ 0, 0, 1 } });
     const m3_expected: M4 = .eye();
     for (0..m3.data.len) |i| {
         for (0..m3.data.len) |j| {
