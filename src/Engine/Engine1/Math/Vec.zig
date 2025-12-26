@@ -54,6 +54,13 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
             return .{ .data = self.data * other.data };
         }
 
+        pub fn mulM(self: @This(), other: Matrix(T, N)) Matrix(T, N) {
+            var output: Matrix(T, N) = .{};
+            inline for (0..N) |i| {
+                output.data[i] = @bitCast(@as(@Vector(N, T), @splat(self.data[i])) * @as(@Vector(N, T), @bitCast(other.data[i])));
+            }
+        }
+
         pub fn divS(self: @This(), scalar: T) @TypeOf(self) {
             std.debug.assert(scalar != @as(T, 0));
             const s = init(scalar);
@@ -64,6 +71,15 @@ pub fn Vector(comptime T: type, comptime N: comptime_int) type {
             const zero_vec = init(0);
             std.debug.assert(!@reduce(.Or, other.data == zero_vec.data));
             return .{ .data = self.data / other.data };
+        }
+
+        pub fn divM(self: @This(), other: Matrix(T, N)) Matrix(T, N) {
+            // post
+            var output: Matrix(T, N) = .{};
+            inline for (0..N) |i| {
+                output.data[i] = @bitCast(@as(@Vector(N, T), @splat(self.data[i])) / @as(@Vector(N, T), @bitCast(other.data[i])));
+            }
+            return output;
         }
 
         pub fn sqrt(self: @This()) @TypeOf(self) {

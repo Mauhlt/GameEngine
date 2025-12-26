@@ -122,7 +122,7 @@ pub fn init(
     try self.createIndexBuffer(&self.indices);
     try self.createUniformBuffers();
     self.descriptor_pool = try self.createDescriptorPool();
-    try self.createDescriptorSets();
+    try self.allocDescriptorSets();
 
     // sync objects
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
@@ -677,7 +677,7 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .polygon_mode = .fill,
         .line_width = 1,
         .cull_mode = .init(.back_bit),
-        .front_face = .clockwise,
+        .front_face = .counter_clockwise,
         .depth_bias_enable = .false,
         .depth_bias_constant_factor = 0,
         .depth_bias_clamp = 0,
@@ -999,8 +999,8 @@ fn createDescriptorPool(self: *const Engine) !vk.DescriptorPool {
     };
 }
 
-fn createDescriptorSets(self: *Engine) !void {
-    var layouts: [MAX_FRAMES_IN_FLIGHT]vk.DescriptorSetLayout = undefined;
+fn allocDescriptorSets(self: *Engine) !void {
+    var layouts = [_]vk.DescriptorSetLayout{self.descriptor_set_layout} ** MAX_FRAMES_IN_FLIGHT;
 
     const alloc_info = vk.DescriptorSetAllocateInfo{
         .descriptor_pool = self.descriptor_pool,
@@ -1020,16 +1020,18 @@ fn createDescriptorSets(self: *Engine) !void {
             .range = @sizeOf(UBO),
         };
 
-        const write = vk.WriteDescriptorSet{
+        const descriptor_write = vk.WriteDescriptorSet{
             .dst_set = self.descriptor_sets[i],
             .dst_binding = 0,
             .dst_array_element = 0,
             .descriptor_type = .uniform_buffer,
             .descriptor_count = 1,
             .p_buffer_info = &buffer_info,
+            .p_image_info = null, // for image descriptors
+            .p_texel_buffer_view = null, // for texture descriptors
         };
 
-        vk.updateDescriptorSets(self.device, 1, &write, 0, null);
+        vk.updateDescriptorSets(self.device, 1, &descriptor_write, 0, null);
     }
 }
 
@@ -1095,6 +1097,7 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
     const offsets = [_]vk.DeviceSize{0};
     vk.cmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, &offsets);
     vk.cmdBindIndexBuffer(command_buffer, self.index_buffer, 0, .uint16);
+    vk.cmdBindDescriptorSets(command_buffer, .graphics, self.pipeline_layout, 0, 1, &self.descriptor_sets[self.current_frame], 0, null);
     vk.cmdDrawIndexed(command_buffer, @as(u32, @truncate(self.indices.len)), 1, 0, 0, 0);
     // vk.cmdDraw(command_buffer, @truncate(vertices.len), 1, 0, 0);
 
@@ -1129,22 +1132,32 @@ fn createFence(self: *const Engine) !vk.Fence {
 }
 
 fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
-    const current = std.time.nanoTimestamp();
-    const delta_time: f32 = @floatFromInt(current - self.start);
+    // const current = std.time.nanoTimestamp();
+    // const delta_time: f32 = @floatFromInt(current - self.start);
 
     var ubo: UBO = .{};
-    const eye = M4.eye();
-    const angle = delta_time * std.math.degreesToRadians(@as(f32, 90.0));
-    const z3 = V3.new([_]f32{ 0, 0, 1 });
-    const z4 = V4.new([_]f32{ 0, 0, 1, 0 });
-    ubo.model = @as([4][4]f32, eye.rotate(angle, z4).data);
+    ubo.model = M4.eye().toMat();
+    ubo.view = M4.eye().toMat();
+    ubo.proj = M4.eye().add.toMat();
 
-    const dos = V3.init(2);
-    ubo.view = @as([4][4]f32, dos.lookAt(V3.init(0), z3).data);
-
-    const fovy = std.math.degreesToRadians(@as(f32, 45.0));
-    const aspect = @as(f32, @floatFromInt(self.swapchain_extent.width)) / @as(f32, @floatFromInt(self.swapchain_extent.height));
-    ubo.proj = @as([4][4]f32, M4.persp(fovy, aspect, 0.1, 0.5).data);
+    // const eye = M4.eye();
+    // const angle = delta_time * std.math.degreesToRadians(@as(f32, 90.0));
+    // const z3 = V3.new([_]f32{ 0, 0, 1 });
+    // const z4 = V4.new([_]f32{ 0, 0, 1, 0 });
+    // const model = eye.rotate(angle, z4);
+    // model.print();
+    // ubo.model = model.toMat();
+    //
+    // const dos = V3.init(2);
+    // const view = dos.lookAt(V3.init(0), z3);
+    // view.print();
+    // ubo.view = view.toMat();
+    //
+    // const fovy = std.math.degreesToRadians(@as(f32, 45.0));
+    // const asp = self.aspect();
+    // const proj = M4.persp(fovy, asp, 0.1, 0.5);
+    // proj.print();
+    // ubo.proj = proj.toMat();
 
     // ubo.model = Mat.rotate(Mat.Mat4.eye(), delta_time * std.math.degreesToRadians(@as(f32, 90.0)), Vec.Vec3.z());
     // ubo.view = Mat.lookAt(Vec.Vec3.init(2), Vec.Vec3.init(0), Vec.Vec3.z());
@@ -1225,4 +1238,10 @@ fn drawFrame(self: *Engine) !void {
     };
 
     self.current_frame = @mod(self.current_frame + 1, MAX_FRAMES_IN_FLIGHT);
+}
+
+fn aspect(self: *const Engine) f32 {
+    const width: f32 = @floatFromInt(self.swapchain_extent.width);
+    const height: f32 = @floatFromInt(self.swapchain_extent.height);
+    return width / height;
 }
