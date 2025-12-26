@@ -1,5 +1,5 @@
 const std = @import("std");
-const Vec = @import("Vec.zig");
+const Vector = @import("Vec.zig").Vector;
 // eye, fromCols, mulS, mulV
 
 pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
@@ -10,12 +10,9 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
         else => @compileError("T must be an int or float.\n"),
     }
 
-    const VN = Vec.Vector(T, N);
-
     // col major
     return struct {
-        // default = all zeros
-        data: [N][N]T = @bitCast([_]T{0} ** (N * N)),
+        data: [N][N]T = @bitCast(@Vector(N * N, T), @splat(0)),
 
         pub fn eye() @This() {
             var self: @This() = .{};
@@ -49,26 +46,48 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
             return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) / @as(@Vector(N * N, T), @splat(scalar))) };
         }
 
-        // vector - assume post
-        // pub fn addV(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-        //     // this is wrong
-        // }
-
-        // pub fn mulV(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
-        //     // this is wrong
-        //     return .{ .data = @bitCast(@as(@Vector(N * N, T), @bitCast(self.data)) * @as(@Vector(N * N, T), @bitCast(other.data))) };
-        // }
-
-        pub fn row(self: @This(), i: usize) VN {
-            return switch (N) {
-                2 => .{ .data = .{ self.data[0][i], self.data[1][i] } },
-                3 => .{ .data = .{ self.data[0][i], self.data[1][i], self.data[2][i] } },
-                4 => .{ .data = .{ self.data[0][i], self.data[1][i], self.data[2][i], self.data[3][i] } },
-                else => unreachable,
-            };
+        pub fn addV(self: @This(), other: Vector(T, N)) @TypeOf(self) {
+            var output = .{};
+            inline for (0..N) |i| {
+                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) + @as(@Vector());
+            }
         }
-        pub fn col(self: @This(), i: usize) VN {
-            return .{ .data = self.data[i] };
+
+        pub fn subV(self: @This(), other: Vector(T, N)) @TypeOf(self) {
+            var output = .{};
+            inline for (0..N) |i| {
+                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) - @as(@Vector());
+            }
+        }
+
+        pub fn mulV(self: @This(), other: Vector(T, N)) @TypeOf(self) {
+            var output = .{};
+            inline for (0..N) |i| {
+                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) * @as(@Vector());
+            }
+        }
+
+        pub fn divV(self: @This(), other: Vector(T, N)) @TypeOf(self) {
+            var output = .{};
+            inline for (0..N) |i| {
+                output.data[i] = @as(@Vector(N, T), @bitCast(self.data[i])) / @as(@Vector());
+            }
+        }
+
+        pub fn addM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) + @as(@Vector(N * N, T), self.data)) };
+        }
+
+        pub fn subM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) - @as(@Vector(N * N, T), self.data)) };
+        }
+
+        pub fn mulE(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) * @as(@Vector(N * N, T), self.data)) };
+        }
+
+        pub fn divM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) / @as(@Vector(N * N, T), self.data)) };
         }
 
         pub fn mulM(self: @This(), other: @TypeOf(self)) @TypeOf(self) {
@@ -86,6 +105,18 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
                 }
             }
             return out;
+        }
+
+        pub fn row(self: @This(), i: usize) Vector(T, N) {
+            return switch (N) {
+                2 => .{ .data = .{ self.data[0][i], self.data[1][i] } },
+                3 => .{ .data = .{ self.data[0][i], self.data[1][i], self.data[2][i] } },
+                4 => .{ .data = .{ self.data[0][i], self.data[1][i], self.data[2][i], self.data[3][i] } },
+                else => unreachable,
+            };
+        }
+        pub fn col(self: @This(), i: usize) Vector(T, N) {
+            return .{ .data = self.data[i] };
         }
 
         pub fn rotate(m: @This(), angle: T, axis: Vec.Vector(T, N)) @TypeOf(m) {
