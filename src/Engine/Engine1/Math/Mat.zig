@@ -155,11 +155,12 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
         pub fn transpose(self: @This()) @TypeOf(self) {
             var new: @This() = .{};
             inline for (0..N) |i| {
-                inline for (0..N / 2) |j| {
+                inline for (0..i) |j| {
                     new.data[i][j] = self.data[j][i];
                     new.data[j][i] = self.data[i][j];
                 }
             }
+            inline for (0..N) |i| new.data[i][i] = self.data[i][i];
             return new;
         }
 
@@ -306,4 +307,46 @@ test "Rotation" {
         }
     }
     // m3.print();
+}
+
+test "Transpose" {
+    const M4 = Matrix(f32, 4);
+    const m1: M4 = .{
+        .data = .{
+            .{ 0, 1, 2, 3 },
+            .{ 4, 5, 6, 7 },
+            .{ 8, 9, 10, 11 },
+            .{ 12, 13, 14, 15 },
+        },
+    };
+    const m2: M4 = .{
+        .data = .{
+            .{ 0, 4, 8, 12 },
+            .{ 1, 5, 9, 13 },
+            .{ 2, 6, 10, 14 },
+            .{ 3, 7, 11, 15 },
+        },
+    };
+    const m3 = m1.transpose();
+    const tol: f32 = 1e-8;
+    for (0..4) |i| {
+        for (0..i) |j| {
+            try std.testing.expectApproxEqAbs(m2.data[i][j], m3.data[i][j], tol);
+        }
+    }
+
+    const m4 = M4.eye().transpose();
+    const m5: M4 = .{
+        .data = .{
+            .{ 1, 0, 0, 0 },
+            .{ 0, 1, 0, 0 },
+            .{ 0, 0, 1, 0 },
+            .{ 0, 0, 0, 1 },
+        },
+    };
+    for (0..4) |i| {
+        for (0..4) |j| {
+            try std.testing.expectApproxEqAbs(m4.data[i][j], m5.data[i][j], tol);
+        }
+    }
 }

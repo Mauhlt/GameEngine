@@ -1135,6 +1135,11 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     // const current = std.time.nanoTimestamp();
     // const delta_time: f32 = @floatFromInt(current - self.start);
 
+    const m4 = M4.eye();
+    const m4t = m4.transpose();
+    m4.print();
+    m4t.print();
+
     var ubo: UBO = .{};
     ubo.model = M4.eye().toMat();
     ubo.view = M4.eye().toMat();
@@ -1143,11 +1148,12 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     // const eye = M4.eye();
     // const angle = delta_time * std.math.degreesToRadians(@as(f32, 90.0));
     // const z3 = V3.new([_]f32{ 0, 0, 1 });
+    // _ = z3;
     // const z4 = V4.new([_]f32{ 0, 0, 1, 0 });
     // const model = eye.rotate(angle, z4);
     // model.print();
-    // ubo.model = model.toMat();
-    //
+    // ubo.model = model.transpose().toMat();
+
     // const dos = V3.init(2);
     // const view = dos.lookAt(V3.init(0), z3);
     // view.print();
