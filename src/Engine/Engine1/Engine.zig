@@ -119,9 +119,12 @@ pub fn init(
     // buffers
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
+    // buffers
     try self.createVertexBuffer(&self.vertices);
     try self.createIndexBuffer(&self.indices);
     try self.createUniformBuffers();
+    try self.createTextureImage();
+    // descriptor pool
     self.descriptor_pool = try self.createDescriptorPool();
     try self.allocDescriptorSets();
 
@@ -184,7 +187,7 @@ pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
 pub fn run(self: *Engine) !void {
     while (!self.window.shouldClose()) {
         try self.drawFrame();
-        self.window.poll();
+        self.window.poll(); // currently blocking - need non-blocking i/o
     }
 
     try switch (vk.deviceWaitIdle(self.device)) {
@@ -813,15 +816,15 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 }
 
-// fn createTextureImage(self: *const Engine) void {
-//     _ = self;
-//     const image_size = try stbi.load(image);
-//     var staging_buffer: vk.Buffer = .null;
-//     var staging_buffer_memory: vk.DeviceMemory = .null;
-//     try self.createBuffer(image_size, .init(.transfer_src_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &staging_buffer, &staging_buffer_memory);
-//
-//     var
-// }
+fn createTextureImage(self: *const Engine) !void {
+    _ = self;
+    const image = @embedFile("../../textures/texture.jpg");
+    std.debug.print("Image Size: {}\n", .{image.len});
+    // const image_size = try stbi.load(image);
+    // var staging_buffer: vk.Buffer = .null;
+    // var staging_buffer_memory: vk.DeviceMemory = .null;
+    // try self.createBuffer(image_size, .init(.transfer_src_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &staging_buffer, &staging_buffer_memory);
+}
 
 fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
     const size = @sizeOf(Vertex) * data.len;
@@ -1135,22 +1138,23 @@ fn createFence(self: *const Engine) !vk.Fence {
 fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     const current = std.time.nanoTimestamp();
     const delta_time: f32 = @floatFromInt(current - self.start);
-
-    var ubo: UBO = .{};
+    // create ubo
     // model
     const eye = M4.eye();
     const angle = std.math.degreesToRadians(90.0) * delta_time;
     const z_axis = V3.new([_]f32{ 0, 0, 1 });
     const model: M4 = eye.rotate(angle, z_axis);
-    ubo.model = model.toMat();
     // view
     const axis2 = V3.init(2);
     const axis3: V3 = .init(0);
     const view: M4 = axis2.lookAt(axis3, z_axis);
-    ubo.view = view.toMat();
     // proj
     const proj: M4 = persp(f32, std.math.degreesToRadians(45.0), self.aspect(), 0.1, 10.0);
-    ubo.proj = proj.toMat();
+    var ubo = .{
+        .model = model.toMat(),
+        .view = view.toMat(),
+        .proj = proj.toMat(),
+    };
     // flip = vulkan specific
     ubo.proj[1][1] *= -1;
     // place on gpu
