@@ -153,6 +153,8 @@ pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
 
     self.destroySwapchain();
 
+    vk.destroySampler(self.device, self.texture_sampler, null);
+    vk.destroyImageView(self.device, self.texture_image_view, null);
     vk.destroyImage(self.device, self.texture_image, null);
     vk.freeMemory(self.device, self.texture_image_memory, null);
 
@@ -963,6 +965,35 @@ fn createImageView(self: *const Engine, image: vk.Image, format: vk.Format) !vk.
     return switch (vk.createImageView(self.device, &create_info, null, &view)) {
         .success => view,
         else => error.FailedToCreateTextureImageView,
+    };
+}
+
+fn createTextureSampler(self: *const Engine) !vk.Sampler {
+    var props: vk.PhysicalDeviceProperties = .{};
+    vk.getPhysicalDeviceProperties(self.physical_device, &props);
+
+    const create_info = vk.SamplerCreateInfo{
+        .mag_filter = .linear,
+        .min_filter = .linear,
+        .address_mode_u = .repeat,
+        .address_mode_v = .repeat,
+        .address_mode_w = .repeat,
+        .anisotropy_enable = .true,
+        .max_anisotropy = props.limits.max_sampler_anisotropy,
+        .border_color = .float_opaque_black,
+        .unnormalized_coordinates = .false,
+        .compare_enable = .false,
+        .compare_op = .always,
+        .mip_map_mode = .linear,
+        .mip_lod_bias = 0.0,
+        .min_lod = 0.0,
+        .max_lod = 0.0,
+    };
+
+    var sampler: vk.Sampler = .null;
+    return switch (vk.createSampler(self.device, &create_info, null, &sampler)) {
+        .success => sampler,
+        else => error.FailedToCreateTextureSampler,
     };
 }
 
