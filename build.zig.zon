@@ -36,6 +36,10 @@
             .url = "git+https://github.com/Mauhlt/PackedEnumSet#65087c8f3d6f961888b52f395c15e4baaaefdd07",
             .hash = "PackedEnumSet-0.0.0-oZSdHqEXAABMzt3RMe8DZ9ZrHqEI20fvtiT-AN5PGR-j",
         },
+        .zstbi = .{
+            .url = "git+https://github.com/zig-gamedev/zstbi#664305dd52640be15cbebd7cd73d1199679933e1",
+            .hash = "zstbi-0.11.0-dev-L0Ea_2yVBwA4uh-tHfgdhZcQaWRoZVYlNGs4Dl_WTeuR",
+        },
     },
     .paths = .{
         "build.zig",

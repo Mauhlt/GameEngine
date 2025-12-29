@@ -16,6 +16,8 @@ const persp = @import("Math/Mat.zig").persp2;
 const Tri = @import("Models/Triangle.zig");
 // Vulkan
 const vk = @import("../../vulkan/vulkan.zig");
+// Zstbi
+const zstbi = @import("zstbi");
 
 // Abstract the engine its own file/dir
 // Abstract tho app into its own file/dir
@@ -49,6 +51,7 @@ pipeline: vk.Pipeline = .null,
 command_pool: vk.CommandPool = .null,
 texture_image: vk.Image = .null,
 texture_image_memory: vk.DeviceMemory = .null,
+texture_image_view: vk.ImageView = .null,
 vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
 index_buffer: vk.Buffer = .null,
@@ -78,7 +81,6 @@ pub fn init(
     comptime title: [*:0]const u8,
     extent: vk.Extent2D,
 ) !Engine {
-    // _ = allo;
     var self: Engine = .{};
 
     // required extensions
@@ -120,10 +122,11 @@ pub fn init(
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
     // buffers
+    try self.createTextureImage(allo);
+    try self.createTextureImageView();
     try self.createVertexBuffer(&self.vertices);
     try self.createIndexBuffer(&self.indices);
     try self.createUniformBuffers();
-    try self.createTextureImage();
     // descriptor pool
     self.descriptor_pool = try self.createDescriptorPool();
     try self.allocDescriptorSets();
@@ -149,6 +152,9 @@ pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
     // allo.free(self.indices);
 
     self.destroySwapchain();
+
+    vk.destroyImage(self.device, self.texture_image, null);
+    vk.freeMemory(self.device, self.texture_image_memory, null);
 
     vk.destroyDescriptorPool(self.device, self.descriptor_pool, null);
     vk.destroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
@@ -816,14 +822,146 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 }
 
-fn createTextureImage(self: *const Engine) !void {
-    _ = self;
-    const image = @embedFile("../../textures/texture.jpg");
-    std.debug.print("Image Size: {}\n", .{image.len});
-    // const image_size = try stbi.load(image);
-    // var staging_buffer: vk.Buffer = .null;
-    // var staging_buffer_memory: vk.DeviceMemory = .null;
-    // try self.createBuffer(image_size, .init(.transfer_src_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &staging_buffer, &staging_buffer_memory);
+fn createTextureImage(self: *const Engine, allo: std.mem.Allocator) !void {
+    // init img loader
+    zstbi.init(allo);
+    defer zstbi.deinit();
+
+    // get abs path to img
+    var exe_path_buf: [1024]u8 = undefined;
+    const exe_path = std.fs.selfExePath(&exe_path_buf) catch unreachable;
+    const idx = std.mem.indexOf(u8, exe_path, "zig-out").?;
+    const basepath = exe_path[0..idx];
+    const fullpath = try std.mem.concat(allo, u8, &.{ basepath, "Engine/Engine1/Textures/texture.jpg" });
+    defer allo.free(fullpath);
+
+    // load img + props
+    var img = try zstbi.Image.loadFromFile("./textures/texture.jpg", 0);
+    defer img.deinit();
+    // data, width, height, num_components, bytes per component, bytes per row, is hdr
+    // std.debug.print("Data Len: {}\n", .{img.data.len});
+    // std.debug.print("Width: {}, Height: {}\n", .{ img.width, img.height });
+    // std.debug.print("# Of Components: {}\n", .{img.num_components}); // 3 = rgb
+
+    // check if successful
+    const image_size: vk.DeviceSize = img.width * img.height * 4;
+    if (img.data.len == 0) return error.FailedToLoadTextureImg;
+
+    // create staging
+    var staging_buffer: vk.Buffer = .null;
+    var staging_buffer_memory: vk.DeviceMemory = .null;
+
+    // create buffer
+    try self.createBuffer(
+        image_size,
+        .init(.transfer_src_bit),
+        .initMany(&.{ .host_visible_bit, .host_coherent_bit }),
+        &staging_buffer,
+        &staging_buffer_memory,
+    );
+
+    // cleanup buffer
+    defer vk.destroyBuffer(self.device, staging_buffer, null);
+    defer vk.freeMemory(self.device, staging_buffer_memory, null);
+
+    {
+        var gpu_ptr: ?*anyopaque = null;
+        try switch (vk.mapMemory(self.device, staging_buffer_memory, 0, image_size, .initEmpty(), &gpu_ptr)) {
+            .success => {},
+            else => error.FailedToMapMemory,
+        };
+        var gpu_vertices: [*]Vertex = @ptrCast(@alignCast(gpu_ptr));
+        @memcpy(gpu_vertices[0..img.data.len], img.data);
+        vk.unmapMemory(self.device, staging_buffer_memory);
+    }
+
+    try self.createImage(
+        img.width,
+        img.height,
+        .r8g8b8a8_srgb,
+        .init(.optimal),
+        .initMany(&.{ .transfer_dst_bit, .usage_sampled_bit }),
+        .init(.device_local_bit),
+    );
+
+    try transitionImageLayout(self.texture_image, .r8g8b8a8_srgb, .undefined, .transfer_dst_optimal);
+    try copyBufferToImage(staging_buffer, self.texture_image, img.width, img.height);
+    try transitionImageLayout(self.texture_image, .r8g8b8a8_srgb, .transfer_dst_optimal, .shader_read_only_optimal);
+}
+
+fn createImage(
+    self: *const Engine,
+    width: u32,
+    height: u32,
+    format: vk.Format,
+    tiling: vk.ImageTiling,
+    usage: vk.ImageUsageFlags,
+    props: vk.MemoryPropertyFlags,
+    image: *vk.Image,
+    image_memory: *vk.DeviceMemory,
+) !void {
+    const create_info = vk.ImageCreateInfo{
+        .image_type = .@"2d",
+        .extent = .{
+            .width = width,
+            .height = height,
+            .depth = 1,
+        },
+        .mip_levels = 1,
+        .array_layers = 1,
+        .format = format,
+        .tiling = tiling,
+        .initial_layout = .undefined,
+        .usage = usage,
+        .sharing_mode = .exclusive,
+        .samples = .@"1_bit",
+    };
+
+    // var texture: vk.Image = .null;
+    try switch (vk.createImage(self.device, &create_info, null, image)) {
+        .success => {},
+        else => error.FailedToCreateImage,
+    };
+
+    var mem_reqs: vk.MemoryRequirements = .{};
+    vk.getImageMemoryRequirements(self.device, image.*, &mem_reqs);
+
+    const alloc_info = vk.MemoryAllocateInfo{
+        .allocation_size = mem_reqs.size,
+        .memory_type_index = try self.findMemoryType(mem_reqs.memory_type_bits, props),
+    };
+
+    try switch (vk.allocateMemory(self.device, &alloc_info, null, image_memory)) {
+        .success => {},
+        else => error.FailedToAllocateImageMemory,
+    };
+
+    try switch (vk.bindImageMemory(self.device, image.*, image_memory.*, 0)) {
+        .success => {},
+        else => error.FailedToBindImageMemory,
+    };
+}
+
+fn copyBufferToImage(self: *const Engine, buffer: vk.Buffer, image: vk.Image, width: u32, height: u32) !void {
+    const command_buffer = try self.beginSingleTimeCommands();
+
+    const region: vk.BufferImageCopy = .{
+        .buffer_offset = 0,
+        .buffer_row_length = 0,
+        .buffer_image_height = 0,
+        .image_subresource = .{
+            .aspect_mask = .init(.color_bit),
+            .mip_level = 0,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        },
+        .image_offset = .{ 0, 0, 0 },
+        .image_extent = .{ width, height, 1 },
+    };
+
+    vk.cmdCopyBufferToImage(command_buffer, buffer, image, .transfer_dst_optimal, 1, &region);
+
+    try self.endSingleTimeCommands(command_buffer);
 }
 
 fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
@@ -910,6 +1048,17 @@ fn createBuffer(self: *Engine, size: vk.DeviceSize, usage: vk.BufferUsageFlags, 
 }
 
 fn copyBuffer(self: *const Engine, src_buffer: vk.Buffer, dst_buffer: vk.Buffer, size: vk.DeviceSize) !void {
+    const command_buffer = try self.beginSingleTimeCommands();
+
+    const copy_region = vk.BufferCopy{
+        .size = size,
+    };
+    vk.cmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
+
+    try self.endSingleTimeCommands(command_buffer);
+}
+
+fn beginSingleTimeCommands(self: *const Engine) !vk.CommandBuffer {
     const alloc_info = vk.CommandBufferAllocateInfo{
         .level = .primary,
         .command_pool = self.command_pool,
@@ -919,7 +1068,7 @@ fn copyBuffer(self: *const Engine, src_buffer: vk.Buffer, dst_buffer: vk.Buffer,
     var command_buffer: vk.CommandBuffer = .null;
     try switch (vk.allocateCommandBuffers(self.device, &alloc_info, &command_buffer)) {
         .success => {},
-        else => error.FailedToAllocateCommandBuffers,
+        else => error.FailedToAllocateCommandBuffer,
     };
 
     const begin_info = vk.CommandBufferBeginInfo{
@@ -931,11 +1080,10 @@ fn copyBuffer(self: *const Engine, src_buffer: vk.Buffer, dst_buffer: vk.Buffer,
         else => error.FailedToBeginCommandBuffer,
     };
 
-    const copy_region = vk.BufferCopy{
-        .size = size,
-    };
-    vk.cmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
+    return command_buffer;
+}
 
+fn endSingleTimeCommands(self: *const Engine, command_buffer: vk.CommandBuffer) !void {
     try switch (vk.endCommandBuffer(command_buffer)) {
         .success => {},
         else => error.FailedToEndCommandBuffer,
@@ -1237,4 +1385,43 @@ fn aspect(self: *const Engine) f32 {
     const width: f32 = @floatFromInt(self.swapchain_extent.width);
     const height: f32 = @floatFromInt(self.swapchain_extent.height);
     return width / height;
+}
+
+fn transitionImageLayout(self: *const Engine, image: vk.Image, format: vk.Format, old_layout: vk.ImageLayout, new_layout: vk.ImageLayout) !void {
+    const command_buffer = try self.beginSingleTimeCommands();
+
+    const barrier = vk.ImageMemoryBarrier{
+        .old_layout = old_layout,
+        .new_layout = new_layout,
+        .src_queue_family_index = .queue_family_ignored,
+        .dst_queue_family_index = .queue_family_ignored,
+        .image = image,
+        .subresource_range = .{
+            .aspect_mask = .init(.color_bit),
+            .base_mip_level = 0,
+            .level_count = 1,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        },
+    };
+
+    var src_stage: vk.PipelineStageFlags = .initEmpty();
+    var dst_stage: vk.PipelineStageFlags = .initEmpty();
+
+    if (old_layout == .undefined and new_layout == .transfer_dst_optimal) {
+        barrier.src_access_mask = .initEmpty();
+        barrier.dst_access_mask = .init(.transfer_write_bit);
+
+        src_stage = .init(.top_of_pipe_bit);
+        dst_stage = .init(.transfer_bit);
+    } else if (old_layout == .transfer_dst_optimal and new_layout == .shader_read_only_optimal) {
+        src_stage = .init(.transfer_bit);
+        dst_stage = .init(.fragment_shader_bit);
+    } else {
+        return error.UnsupportedLayoutTransition;
+    }
+
+    vk.cmdPipelineBarrier(command_buffer, src_stage, dst_stage, .initEmpty(), 0, null, 0, null, 1, &barrier);
+
+    try self.endSingleTimeCommands(command_buffer);
 }

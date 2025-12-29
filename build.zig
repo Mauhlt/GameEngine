@@ -82,6 +82,10 @@ pub fn build(b: *std.Build) !void {
     run_step.dependOn(&run_cmd.step);
     run_cmd.step.dependOn(b.getInstallStep());
 
+    // image loading
+    const zstbi = b.dependency("zstbi", .{});
+    exe.root_module.addImport("zstbi", zstbi.module("root"));
+
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
