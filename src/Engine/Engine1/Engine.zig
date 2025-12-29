@@ -484,30 +484,7 @@ fn getSwapchainImages(self: *Engine) !void {
 }
 
 fn createSwapchainImageView(self: *const Engine, i: usize) !vk.ImageView {
-    const create_info = vk.ImageViewCreateInfo{
-        .image = self.swapchain_images[i],
-        .view_type = .@"2d",
-        .format = self.swapchain_format,
-        .components = .{
-            .r = .identity,
-            .g = .identity,
-            .b = .identity,
-            .a = .identity,
-        },
-        .subresource_range = .{
-            .aspect_mask = .init(.color_bit),
-            .base_mip_level = 0,
-            .level_count = 1,
-            .base_array_layer = 0,
-            .layer_count = 1,
-        },
-    };
-
-    var view: vk.ImageView = .null;
-    return switch (vk.createImageView(self.device, &create_info, null, &view)) {
-        .success => view,
-        else => error.FailedToCreateImageView,
-    };
+    return self.createImageView(self.swapchain_images[i], self.swapchain_format);
 }
 
 fn createRenderPass(self: *const Engine) !vk.RenderPass {
@@ -962,6 +939,31 @@ fn copyBufferToImage(self: *const Engine, buffer: vk.Buffer, image: vk.Image, wi
     vk.cmdCopyBufferToImage(command_buffer, buffer, image, .transfer_dst_optimal, 1, &region);
 
     try self.endSingleTimeCommands(command_buffer);
+}
+
+fn createTextureImageView(self: *const Engine) !vk.ImageView {
+    return self.createImageView(self.texture_image, .r8g8b8a8_srgb);
+}
+
+fn createImageView(self: *const Engine, image: vk.Image, format: vk.Format) !vk.ImageView {
+    const create_info = vk.ImageViewCreateInfo{
+        .image = image,
+        .view_type = .@"2d",
+        .format = format,
+        .subresource_range = .{
+            .aspect_mask = .init(.color_bit),
+            .base_mip_level = 0,
+            .level_count = 1,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        },
+    };
+
+    var view: vk.ImageView = .null;
+    return switch (vk.createImageView(self.device, &create_info, null, &view)) {
+        .success => view,
+        else => error.FailedToCreateTextureImageView,
+    };
 }
 
 fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
