@@ -13,18 +13,16 @@ const V4 = Vector(f32, 4);
 const M4 = Matrix(f32, 4);
 const persp = @import("Math/Mat.zig").persp2;
 // Model
-const Tri = @import("Models/Triangle.zig");
+// const Tri = @import("Models/Triangle.zig");
+const Rect = @import("Models/Rectangle.zig");
 // Vulkan
 const vk = @import("../../vulkan/vulkan.zig");
 // Zstbi
 const zstbi = @import("zstbi");
-
 // Abstract the engine its own file/dir
 // Abstract tho app into its own file/dir
-
 const MAX_U64 = std.math.maxInt(u64);
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
-
 const Engine = @This();
 // device
 window: Window = undefined,
@@ -49,18 +47,24 @@ pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // commands
 command_pool: vk.CommandPool = .null,
+// textures
 texture_image: vk.Image = .null,
 texture_image_memory: vk.DeviceMemory = .null,
 texture_image_view: vk.ImageView = .null,
+// vertex buffers
 vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
+// index buffers
 index_buffer: vk.Buffer = .null,
 index_buffer_memory: vk.DeviceMemory = .null,
+// uniform buffers
 uniform_buffers: [MAX_FRAMES_IN_FLIGHT]vk.Buffer = [_]vk.Buffer{.null} ** MAX_FRAMES_IN_FLIGHT,
 uniform_buffer_memories: [MAX_FRAMES_IN_FLIGHT]vk.DeviceMemory = [_]vk.DeviceMemory{.null} ** MAX_FRAMES_IN_FLIGHT,
 uniform_buffer_maps: [MAX_FRAMES_IN_FLIGHT]?*anyopaque = [_]?*anyopaque{null} ** MAX_FRAMES_IN_FLIGHT,
+// descriptors
 descriptor_pool: vk.DescriptorPool = .null,
 descriptor_sets: [MAX_FRAMES_IN_FLIGHT]vk.DescriptorSet = [_]vk.DescriptorSet{.null} ** MAX_FRAMES_IN_FLIGHT,
+// command buffers
 command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = [_]vk.CommandBuffer{.null} ** MAX_FRAMES_IN_FLIGHT,
 // sync objects
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
@@ -72,8 +76,8 @@ framebuffer_resized: bool = false,
 start: i128 = 0,
 current: i128 = 0,
 // models = auto-loaded for now
-vertices: [4]Vertex = Tri.vertices,
-indices: [6]u16 = Tri.indices,
+vertices: [4]Vertex = Rect.vertices, // Tri.vertices,
+indices: [6]u16 = Rect.indices, // Tri.indices,
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -82,14 +86,12 @@ pub fn init(
     extent: vk.Extent2D,
 ) !Engine {
     var self: Engine = .{};
-
     // required extensions
     const ries = [_][*:0]const u8{
         vk.ExtensionName.surface,
         vk.ExtensionName.win32_surface,
     };
     const rdes = [_][*:0]const u8{vk.ExtensionName.swapchain};
-
     // device
     self.window = try createWindow(name, title, extent);
     self.instance = try createInstance(&ries);
@@ -99,7 +101,6 @@ pub fn init(
     const qfi = try QFI.init(self.surface, self.physical_device);
     self.graphics_queue = self.getQueue(qfi.graphics_family.?);
     self.present_queue = self.getQueue(qfi.present_family.?);
-
     // swapchain
     self.swapchain = try self.createSwapchain();
     const ssd = try SSD.init(self.surface, self.physical_device);
@@ -112,13 +113,11 @@ pub fn init(
     self.render_pass = try self.createRenderPass();
     for (0..self.swapchain_n_images) |i|
         self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
-
     // pipeline
     self.descriptor_set_layout = try self.createDescriptorSetLayout();
     self.pipeline_layout = try self.createPipelineLayout();
     self.pipeline = try self.createGraphicsPipeline(allo);
-
-    // buffers
+    // command pool
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
     // buffers
@@ -130,62 +129,56 @@ pub fn init(
     // descriptor pool
     self.descriptor_pool = try self.createDescriptorPool();
     try self.allocDescriptorSets();
-
     // sync objects
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         self.image_available_semaphores[i] = try self.createSemaphore();
         self.render_finished_semaphores[i] = try self.createSemaphore();
         self.in_flight_fences[i] = try self.createFence();
     }
-
     // update variables
     self.start = std.time.nanoTimestamp();
     self.window.show();
-
     return self;
 }
 
 pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
-    // model
     _ = allo;
-    // allo.free(self.vertices);
-    // allo.free(self.indices);
-
+    // swapchain
     self.destroySwapchain();
-
+    // texture
     vk.destroySampler(self.device, self.texture_sampler, null);
     vk.destroyImageView(self.device, self.texture_image_view, null);
     vk.destroyImage(self.device, self.texture_image, null);
     vk.freeMemory(self.device, self.texture_image_memory, null);
-
+    // descriptors
     vk.destroyDescriptorPool(self.device, self.descriptor_pool, null);
     vk.destroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
-
+    // uniform buffers
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         vk.destroyBuffer(self.device, self.uniform_buffers[i], null);
         vk.freeMemory(self.device, self.uniform_buffer_memories[i], null);
     }
+    // descriptor set layouts
     vk.destroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
-
+    // index buffers
     vk.destroyBuffer(self.device, self.index_buffer, null);
     vk.freeMemory(self.device, self.index_buffer_memory, null);
-
+    // vertex buffers
     vk.destroyBuffer(self.device, self.vertex_buffer, null);
     vk.freeMemory(self.device, self.vertex_buffer_memory, null);
-
+    // pipeline
     vk.destroyPipeline(self.device, self.pipeline, null);
     vk.destroyPipelineLayout(self.device, self.pipeline_layout, null);
-
     vk.destroyRenderPass(self.device, self.render_pass, null);
-
+    // sync objects
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         vk.destroyFence(self.device, self.in_flight_fences[i], null);
         vk.destroySemaphore(self.device, self.render_finished_semaphores[i], null);
         vk.destroySemaphore(self.device, self.image_available_semaphores[i], null);
     }
-
+    // command pool
     vk.destroyCommandPool(self.device, self.command_pool, null);
-
+    // base
     vk.destroyDevice(self.device, null);
     vk.destroySurfaceKHR(self.instance, self.surface, null);
     vk.destroyInstance(self.instance, null);
@@ -197,7 +190,6 @@ pub fn run(self: *Engine) !void {
         try self.drawFrame();
         self.window.poll(); // currently blocking - need non-blocking i/o
     }
-
     try switch (vk.deviceWaitIdle(self.device)) {
         .success => {},
         else => error.FailedToIdleDevice,
@@ -209,7 +201,12 @@ fn createWindow(
     comptime title: [*:0]const u8,
     extent: vk.Extent2D,
 ) !Window {
-    return try Window.init(std.mem.span(name), std.mem.span(title), extent.width, extent.height);
+    return try Window.init(
+        std.mem.span(name),
+        std.mem.span(title),
+        extent.width,
+        extent.height,
+    );
 }
 
 fn createInstance(ries: []const [*:0]const u8) !vk.Instance {
@@ -234,7 +231,8 @@ fn createInstance(ries: []const [*:0]const u8) !vk.Instance {
         else => error.FailedToEnumerateInstanceExtensionProperties,
     };
 
-    if (!hasRequiredExtensions(ries, exts[0..n_exts])) return error.MissingRequiredInstanceExtensions;
+    if (!hasRequiredExtensions(ries, exts[0..n_exts]))
+        return error.MissingRequiredInstanceExtensions;
 
     const create_info = vk.InstanceCreateInfo{
         .flags = switch (@import("builtin").os.tag) {
@@ -262,7 +260,12 @@ fn createSurface(self: *const Engine) !vk.SurfaceKHR {
     };
 
     var surface: vk.SurfaceKHR = .null;
-    return switch (vk.createWin32SurfaceKHR(self.instance, &create_info, null, &surface)) {
+    return switch (vk.createWin32SurfaceKHR(
+        self.instance,
+        &create_info,
+        null,
+        &surface,
+    )) {
         .success => surface,
         else => error.FailedToCreateWin32Surface,
     };
@@ -275,17 +278,13 @@ fn pickPhysicalDevice(self: *const Engine) !vk.PhysicalDevice {
         else => error.FailedToEnumeratePhysicalDevices,
     };
     if (n_candidates == 0) return error.NoGPUsSupportVulkan;
-
     var candidates: [64]vk.PhysicalDevice = undefined;
     try switch (vk.enumeratePhysicalDevices(self.instance, &n_candidates, &candidates)) {
         .success => {},
         else => error.FailedToEnumeratePhysicalDevices,
     };
-
-    for (candidates) |candidate| {
+    for (candidates) |candidate|
         if (isCandidateDeviceSuitable(self.surface, candidate)) return candidate;
-    }
-
     return error.FailedToFindSuitableCandidate;
 }
 
@@ -302,29 +301,32 @@ fn rateCandidateDevice(candidate: vk.PhysicalDevice) isize {
         .integrated_gpu, .cpu => score += 100,
         else => {},
     }
-
     score += @intCast(props.limits.max_image_dimension_2d);
     score += @intCast(props.limits.max_image_dimension_3d);
-
     switch (feats.geometry_shader) {
         .false => return 0,
         else => {},
     }
-
     return score;
 }
 
 fn isCandidateDeviceSuitable(surface: vk.SurfaceKHR, candidate: vk.PhysicalDevice) bool {
-    const rating = rateCandidateDevice(candidate);
+    // rating
+    const has_rating = rateCandidateDevice(candidate) > 1000;
+    // qfi
     const qfi = QFI.init(surface, candidate) catch return false;
+    // ssd
     const ssd = SSD.init(surface, candidate) catch return false;
     const is_swapchain_adequate = (ssd.n_formats > 0 and ssd.n_present_modes > 0);
-    return rating > 1000 and qfi.isComplete() and is_swapchain_adequate;
+    // feats
+    var feats: vk.PhysicalDeviceFeatures = .{};
+    vk.getPhysicalDeviceFeatures(candidate, &feats);
+    // return combo
+    return has_rating and qfi.isComplete() and is_swapchain_adequate and feats.sampler_anisotropy == .true;
 }
 
 fn createLogicalDevice(self: *const Engine, rdes: []const [*:0]const u8) !vk.Device {
     const qfi = try QFI.init(self.surface, self.physical_device);
-
     const queue_priority = [_]f32{1.0};
     const qcis = [_]vk.DeviceQueueCreateInfo{
         .{
@@ -338,24 +340,33 @@ fn createLogicalDevice(self: *const Engine, rdes: []const [*:0]const u8) !vk.Dev
             .queue_count = 1,
         },
     };
-
-    var feats: vk.PhysicalDeviceFeatures = .{};
-
+    var feats: vk.PhysicalDeviceFeatures = .{
+        .sampler_anisotropy = .true,
+    };
     var n_exts: u32 = 0;
-    try switch (vk.enumerateDeviceExtensionProperties(self.physical_device, null, &n_exts, null)) {
+    try switch (vk.enumerateDeviceExtensionProperties(
+        self.physical_device,
+        null,
+        &n_exts,
+        null,
+    )) {
         .success => {},
         else => error.FailedToEnumerateDeviceExtensionProperties,
     };
     if (n_exts == 0) return error.FailedToFindAnyDeviceExtensionProperties;
     if (n_exts > 255) return error.FoundTooManyDeviceExtensionProperties;
     var exts: [255]vk.ExtensionProperties = undefined;
-    try switch (vk.enumerateDeviceExtensionProperties(self.physical_device, null, &n_exts, &exts)) {
+    try switch (vk.enumerateDeviceExtensionProperties(
+        self.physical_device,
+        null,
+        &n_exts,
+        &exts,
+    )) {
         .success => {},
         else => error.FailedToEnumerateDeviceExtensionProperties,
     };
-
-    if (!hasRequiredExtensions(rdes, exts[0..n_exts])) return error.MissingRequiredDeviceExtensions;
-
+    if (!hasRequiredExtensions(rdes, exts[0..n_exts]))
+        return error.MissingRequiredDeviceExtensions;
     const create_info = vk.DeviceCreateInfo{
         .flags = 0,
         .queue_create_info_count = if (qfi.isSameFamily()) 1 else @truncate(qcis.len),
@@ -366,7 +377,6 @@ fn createLogicalDevice(self: *const Engine, rdes: []const [*:0]const u8) !vk.Dev
         .pp_enabled_layer_names = null,
         .p_enabled_features = &feats,
     };
-
     var device: vk.Device = .null;
     return switch (vk.createDevice(self.physical_device, &create_info, null, &device)) {
         .success => device,
@@ -374,7 +384,10 @@ fn createLogicalDevice(self: *const Engine, rdes: []const [*:0]const u8) !vk.Dev
     };
 }
 
-fn hasRequiredExtensions(req_exts: []const [*:0]const u8, has_exts: []const vk.ExtensionProperties) bool {
+fn hasRequiredExtensions(
+    req_exts: []const [*:0]const u8,
+    has_exts: []const vk.ExtensionProperties,
+) bool {
     var none_missing: bool = true;
     outer: for (req_exts) |req_ext| {
         const name1 = std.mem.span(req_ext);
@@ -403,7 +416,11 @@ fn createSwapchain(self: *const Engine) !vk.SwapchainKHR {
     const qfi = try QFI.init(self.surface, self.physical_device);
     const qfis = [_]u32{ qfi.graphics_family.?, qfi.present_family.? };
 
-    const n_images = if (ssd.capabilities.max_image_count > 0 and ssd.capabilities.max_image_count < ssd.capabilities.min_image_count + 1) ssd.capabilities.max_image_count else ssd.capabilities.min_image_count + 1;
+    const n_images = if (ssd.capabilities.max_image_count > 0 and
+        ssd.capabilities.max_image_count < ssd.capabilities.min_image_count + 1)
+        ssd.capabilities.max_image_count
+    else
+        ssd.capabilities.min_image_count + 1;
 
     const create_info = vk.SwapchainCreateInfoKHR{
         .surface = self.surface,
@@ -431,20 +448,16 @@ fn createSwapchain(self: *const Engine) !vk.SwapchainKHR {
 }
 
 fn recreateSwapchain(self: *Engine) !void {
-    // handle minimization - might be better to handle this at window level instead
     var size = self.window.clientSize();
     while (size.w == 0 or size.h == 0) {
         size = self.window.clientSize();
         self.window.poll();
     }
-
     try switch (vk.deviceWaitIdle(self.device)) {
         .success => {},
         else => error.FailedToIdleDevice,
     };
-
     self.destroySwapchain();
-
     self.swapchain = try self.createSwapchain();
     const ssd = try SSD.init(self.surface, self.physical_device);
     self.swapchain_format = ssd.chooseSurfaceFormat().format;
@@ -469,7 +482,12 @@ fn destroySwapchain(self: *Engine) void {
 
 fn getNumSwapchainImages(self: *const Engine) !u32 {
     var n_images: u32 = 0;
-    return switch (vk.getSwapchainImagesKHR(self.device, self.swapchain, &n_images, null)) {
+    return switch (vk.getSwapchainImagesKHR(
+        self.device,
+        self.swapchain,
+        &n_images,
+        null,
+    )) {
         .success => blk: {
             if (n_images == 0) return error.FailedToFindSwapchainImages;
             break :blk n_images;
@@ -479,7 +497,12 @@ fn getNumSwapchainImages(self: *const Engine) !u32 {
 }
 
 fn getSwapchainImages(self: *Engine) !void {
-    try switch (vk.getSwapchainImagesKHR(self.device, self.swapchain, &self.swapchain_n_images, &self.swapchain_images)) {
+    try switch (vk.getSwapchainImagesKHR(
+        self.device,
+        self.swapchain,
+        &self.swapchain_n_images,
+        &self.swapchain_images,
+    )) {
         .success => {},
         else => error.FailedToGetSwapchainImages,
     };
@@ -558,7 +581,12 @@ fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
     };
 
     var framebuffer: vk.Framebuffer = .null;
-    return switch (vk.createFramebuffer(self.device, &create_info, null, &framebuffer)) {
+    return switch (vk.createFramebuffer(
+        self.device,
+        &create_info,
+        null,
+        &framebuffer,
+    )) {
         .success => framebuffer,
         else => error.FailedToCreateFramebuffer,
     };
@@ -573,13 +601,31 @@ fn createDescriptorSetLayout(self: *const Engine) !vk.DescriptorSetLayout {
         .p_immutable_samplers = null,
     };
 
+    const sampler_layout_binding = vk.DescriptorSetLayoutBinding{
+        .binding = 1,
+        .descriptor_count = 1,
+        .descriptor_type = .combined_image_sampler,
+        .p_immutable_samplers = null,
+        .stage_flags = .init(.fragment_bit),
+    };
+
+    const bindings = [_]vk.DescriptorSetLayoutBinding{
+        ubo_layout_binding,
+        sampler_layout_binding,
+    };
+
     const create_info = vk.DescriptorSetLayoutCreateInfo{
-        .binding_count = 1,
+        .binding_count = @truncate(bindings.len),
         .p_bindings = &ubo_layout_binding,
     };
 
     var descriptor_set_layout: vk.DescriptorSetLayout = .null;
-    return switch (vk.createDescriptorSetLayout(self.device, &create_info, null, &descriptor_set_layout)) {
+    return switch (vk.createDescriptorSetLayout(
+        self.device,
+        &create_info,
+        null,
+        &descriptor_set_layout,
+    )) {
         .success => descriptor_set_layout,
         else => error.FailedToCreateDescriptorSetLayout,
     };
@@ -594,72 +640,69 @@ fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
     };
 
     var layout: vk.PipelineLayout = .null;
-    return switch (vk.createPipelineLayout(self.device, &create_info, null, &layout)) {
+    return switch (vk.createPipelineLayout(
+        self.device,
+        &create_info,
+        null,
+        &layout,
+    )) {
         .success => layout,
         else => error.FailedToCreatePipelineLayout,
     };
 }
 
 fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipeline {
-    const vert_shader_code = try readFile(allo, "tri.vert.spv");
+    // const vert_shader_code = try readFile(allo, "tri.vert.spv");
+    const vert_shader_code = try readFile(allo, "sqr.vert.spv");
     defer allo.free(vert_shader_code);
-
-    const frag_shader_code = try readFile(allo, "tri.frag.spv");
+    // const frag_shader_code = try readFile(allo, "tri.frag.spv");
+    const frag_shader_code = try readFile(allo, "sqr.frag.spv");
     defer allo.free(frag_shader_code);
-
     const vert_shader_module = try self.createShaderModule(vert_shader_code);
     defer vk.destroyShaderModule(self.device, vert_shader_module, null);
-
     const frag_shader_module = try self.createShaderModule(frag_shader_code);
     defer vk.destroyShaderModule(self.device, frag_shader_module, null);
-
     const vss_create_info = vk.PipelineShaderStageCreateInfo{
         .stage = .vertex_bit,
         .module = vert_shader_module,
         .p_name = "main",
     };
-
     const fss_create_info = vk.PipelineShaderStageCreateInfo{
         .stage = .fragment_bit,
         .module = frag_shader_module,
         .p_name = "main",
     };
-
-    const ss_create_info = [_]vk.PipelineShaderStageCreateInfo{ vss_create_info, fss_create_info };
-
+    const ss_create_info = [_]vk.PipelineShaderStageCreateInfo{
+        vss_create_info,
+        fss_create_info,
+    };
     var bind_descs: [1]vk.VertexInputBindingDescription = undefined;
     Vertex.getBindingDescription(&bind_descs);
-
-    var attr_descs: [2]vk.VertexInputAttributeDescription = undefined;
+    // inefficient to both declare undefined +
+    var attr_descs: [3]vk.VertexInputAttributeDescription = undefined;
     Vertex.getAttributeDescriptions(&attr_descs);
-
     const vis_create_info = vk.PipelineVertexInputStateCreateInfo{
         .vertex_binding_description_count = @truncate(bind_descs.len),
         .p_vertex_binding_descriptions = &bind_descs,
         .vertex_attribute_description_count = @truncate(attr_descs.len),
         .p_vertex_attribute_descriptions = &attr_descs,
     };
-
     const ias_create_info = vk.PipelineInputAssemblyStateCreateInfo{
         .topology = .triangle_list,
         .primitive_restart_enable = .false,
     };
-
     const dynamic_states = [_]vk.DynamicState{
         .viewport,
         .scissor,
     };
-
     const ds_create_info = vk.PipelineDynamicStateCreateInfo{
         .dynamic_state_count = @truncate(dynamic_states.len),
         .p_dynamic_states = &dynamic_states,
     };
-
     const vs_create_info = vk.PipelineViewportStateCreateInfo{
         .viewport_count = 1,
         .scissor_count = 1,
     };
-
     const rs_create_info = vk.PipelineRasterizationStateCreateInfo{
         .depth_clamp_enable = .false,
         .rasterizer_discard_enable = .false,
@@ -672,7 +715,6 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .depth_bias_clamp = 0,
         .depth_bias_slope_factor = 0,
     };
-
     const ms_create_info = vk.PipelineMultisampleStateCreateInfo{
         .sample_shading_enable = .false,
         .rasterization_samples = .@"1_bit",
@@ -681,7 +723,6 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .alpha_to_coverage_enable = .false,
         .alpha_to_one_enable = .false,
     };
-
     const cba = vk.PipelineColorBlendAttachmentState{
         .color_write_mask = .initMany(&.{ .r_bit, .g_bit, .b_bit, .a_bit }),
         .blend_enable = .false,
@@ -692,7 +733,6 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .dst_alpha_blend_factor = .zero,
         .alpha_blend_op = .add,
     };
-
     const cbs_create_info = vk.PipelineColorBlendStateCreateInfo{
         .logic_op_enable = .false,
         .logic_op = .copy,
@@ -700,7 +740,6 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .p_attachments = &cba,
         .blend_constants = [_]f32{0} ** 4,
     };
-
     const create_info = vk.GraphicsPipelineCreateInfo{
         .stage_count = @truncate(ss_create_info.len),
         .p_stages = &ss_create_info,
@@ -718,9 +757,15 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .base_pipeline_handle = .null,
         .base_pipeline_index = -1,
     };
-
     var pipeline: vk.Pipeline = .null;
-    return switch (vk.createGraphicsPipelines(self.device, .null, 1, &create_info, null, &pipeline)) {
+    return switch (vk.createGraphicsPipelines(
+        self.device,
+        .null,
+        1,
+        &create_info,
+        null,
+        &pipeline,
+    )) {
         .success => pipeline,
         else => error.FailedToCreateGraphicsPipeline,
     };
@@ -764,7 +809,6 @@ fn createShaderModule(self: *const Engine, code: []const u8) !vk.ShaderModule {
         .code_size = @truncate(code.len),
         .p_code = @ptrCast(@alignCast(code)),
     };
-
     var shader_module: vk.ShaderModule = .null;
     return switch (vk.createShaderModule(self.device, &create_info, null, &shader_module)) {
         .success => shader_module,
@@ -774,12 +818,10 @@ fn createShaderModule(self: *const Engine, code: []const u8) !vk.ShaderModule {
 
 fn createCommandPool(self: *const Engine) !vk.CommandPool {
     const qfi = try QFI.init(self.surface, self.physical_device);
-
     const create_info = vk.CommandPoolCreateInfo{
         .queue_family_index = qfi.graphics_family.?,
         .flags = .initEmpty(),
     };
-
     var pool: vk.CommandPool = .null;
     return switch (vk.createCommandPool(self.device, &create_info, null, &pool)) {
         .success => pool,
@@ -795,7 +837,11 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 
     var command_buffer: vk.CommandBuffer = .null;
-    return switch (vk.allocateCommandBuffers(self.device, &alloc_info, &command_buffer)) {
+    return switch (vk.allocateCommandBuffers(
+        self.device,
+        &alloc_info,
+        &command_buffer,
+    )) {
         .success => command_buffer,
         else => error.FailedToAllocateCommandBuffer,
     };
@@ -805,15 +851,16 @@ fn createTextureImage(self: *const Engine, allo: std.mem.Allocator) !void {
     // init img loader
     zstbi.init(allo);
     defer zstbi.deinit();
-
     // get abs path to img
     var exe_path_buf: [1024]u8 = undefined;
     const exe_path = std.fs.selfExePath(&exe_path_buf) catch unreachable;
     const idx = std.mem.indexOf(u8, exe_path, "zig-out").?;
     const basepath = exe_path[0..idx];
-    const fullpath = try std.mem.concat(allo, u8, &.{ basepath, "Engine/Engine1/Textures/texture.jpg" });
+    const fullpath = try std.mem.concat(allo, u8, &.{
+        basepath,
+        "Engine/Engine1/Textures/texture.jpg",
+    });
     defer allo.free(fullpath);
-
     // load img + props
     var img = try zstbi.Image.loadFromFile("./textures/texture.jpg", 0);
     defer img.deinit();
@@ -845,7 +892,14 @@ fn createTextureImage(self: *const Engine, allo: std.mem.Allocator) !void {
 
     {
         var gpu_ptr: ?*anyopaque = null;
-        try switch (vk.mapMemory(self.device, staging_buffer_memory, 0, image_size, .initEmpty(), &gpu_ptr)) {
+        try switch (vk.mapMemory(
+            self.device,
+            staging_buffer_memory,
+            0,
+            image_size,
+            .initEmpty(),
+            &gpu_ptr,
+        )) {
             .success => {},
             else => error.FailedToMapMemory,
         };
@@ -863,9 +917,24 @@ fn createTextureImage(self: *const Engine, allo: std.mem.Allocator) !void {
         .init(.device_local_bit),
     );
 
-    try transitionImageLayout(self.texture_image, .r8g8b8a8_srgb, .undefined, .transfer_dst_optimal);
-    try copyBufferToImage(staging_buffer, self.texture_image, img.width, img.height);
-    try transitionImageLayout(self.texture_image, .r8g8b8a8_srgb, .transfer_dst_optimal, .shader_read_only_optimal);
+    try transitionImageLayout(
+        self.texture_image,
+        .r8g8b8a8_srgb,
+        .undefined,
+        .transfer_dst_optimal,
+    );
+    try copyBufferToImage(
+        staging_buffer,
+        self.texture_image,
+        img.width,
+        img.height,
+    );
+    try transitionImageLayout(
+        self.texture_image,
+        .r8g8b8a8_srgb,
+        .transfer_dst_optimal,
+        .shader_read_only_optimal,
+    );
 }
 
 fn createImage(
@@ -921,9 +990,14 @@ fn createImage(
     };
 }
 
-fn copyBufferToImage(self: *const Engine, buffer: vk.Buffer, image: vk.Image, width: u32, height: u32) !void {
+fn copyBufferToImage(
+    self: *const Engine,
+    buffer: vk.Buffer,
+    image: vk.Image,
+    width: u32,
+    height: u32,
+) !void {
     const command_buffer = try self.beginSingleTimeCommands();
-
     const region: vk.BufferImageCopy = .{
         .buffer_offset = 0,
         .buffer_row_length = 0,
@@ -937,9 +1011,14 @@ fn copyBufferToImage(self: *const Engine, buffer: vk.Buffer, image: vk.Image, wi
         .image_offset = .{ 0, 0, 0 },
         .image_extent = .{ width, height, 1 },
     };
-
-    vk.cmdCopyBufferToImage(command_buffer, buffer, image, .transfer_dst_optimal, 1, &region);
-
+    vk.cmdCopyBufferToImage(
+        command_buffer,
+        buffer,
+        image,
+        .transfer_dst_optimal,
+        1,
+        &region,
+    );
     try self.endSingleTimeCommands(command_buffer);
 }
 
@@ -947,7 +1026,11 @@ fn createTextureImageView(self: *const Engine) !vk.ImageView {
     return self.createImageView(self.texture_image, .r8g8b8a8_srgb);
 }
 
-fn createImageView(self: *const Engine, image: vk.Image, format: vk.Format) !vk.ImageView {
+fn createImageView(
+    self: *const Engine,
+    image: vk.Image,
+    format: vk.Format,
+) !vk.ImageView {
     const create_info = vk.ImageViewCreateInfo{
         .image = image,
         .view_type = .@"2d",
@@ -960,7 +1043,6 @@ fn createImageView(self: *const Engine, image: vk.Image, format: vk.Format) !vk.
             .layer_count = 1,
         },
     };
-
     var view: vk.ImageView = .null;
     return switch (vk.createImageView(self.device, &create_info, null, &view)) {
         .success => view,
@@ -971,7 +1053,7 @@ fn createImageView(self: *const Engine, image: vk.Image, format: vk.Format) !vk.
 fn createTextureSampler(self: *const Engine) !vk.Sampler {
     var props: vk.PhysicalDeviceProperties = .{};
     vk.getPhysicalDeviceProperties(self.physical_device, &props);
-
+    // instead of anisotropy on, can do anisotropyenable = false + max_anisotropy = 1.0
     const create_info = vk.SamplerCreateInfo{
         .mag_filter = .linear,
         .min_filter = .linear,
@@ -989,7 +1071,6 @@ fn createTextureSampler(self: *const Engine) !vk.Sampler {
         .min_lod = 0.0,
         .max_lod = 0.0,
     };
-
     var sampler: vk.Sampler = .null;
     return switch (vk.createSampler(self.device, &create_info, null, &sampler)) {
         .success => sampler,
@@ -1002,8 +1083,13 @@ fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
 
     var staging_buffer: vk.Buffer = .null;
     var staging_buffer_memory: vk.DeviceMemory = .null;
-    try self.createBuffer(size, .init(.transfer_src_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &staging_buffer, &staging_buffer_memory);
-
+    try self.createBuffer(
+        size,
+        .init(.transfer_src_bit),
+        .initMany(&.{ .host_visible_bit, .host_coherent_bit }),
+        &staging_buffer,
+        &staging_buffer_memory,
+    );
     {
         var gpu_ptr: ?*anyopaque = null;
         try switch (vk.mapMemory(self.device, staging_buffer_memory, 0, size, .initEmpty(), &gpu_ptr)) {
@@ -1014,25 +1100,39 @@ fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
         @memcpy(gpu_vertices[0..data.len], data);
         vk.unmapMemory(self.device, staging_buffer_memory);
     }
-
-    try self.createBuffer(size, .initMany(&.{ .transfer_src_bit, .vertex_buffer_bit }), .init(.device_local_bit), &self.vertex_buffer, &self.vertex_buffer_memory);
-
+    try self.createBuffer(
+        size,
+        .initMany(&.{ .transfer_src_bit, .vertex_buffer_bit }),
+        .init(.device_local_bit),
+        &self.vertex_buffer,
+        &self.vertex_buffer_memory,
+    );
     try self.copyBuffer(staging_buffer, self.vertex_buffer, size);
-
     vk.destroyBuffer(self.device, staging_buffer, null);
     vk.freeMemory(self.device, staging_buffer_memory, null);
 }
 
 fn createIndexBuffer(self: *Engine, data: []const u16) !void {
     const size = @sizeOf(u16) * data.len;
-
     var staging_buffer: vk.Buffer = .null;
     var staging_buffer_memory: vk.DeviceMemory = .null;
-    try self.createBuffer(size, .init(.transfer_src_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &staging_buffer, &staging_buffer_memory);
-
+    try self.createBuffer(
+        size,
+        .init(.transfer_src_bit),
+        .initMany(&.{ .host_visible_bit, .host_coherent_bit }),
+        &staging_buffer,
+        &staging_buffer_memory,
+    );
     {
         var gpu_ptr: ?*anyopaque = null;
-        try switch (vk.mapMemory(self.device, staging_buffer_memory, 0, size, .initEmpty(), &gpu_ptr)) {
+        try switch (vk.mapMemory(
+            self.device,
+            staging_buffer_memory,
+            0,
+            size,
+            .initEmpty(),
+            &gpu_ptr,
+        )) {
             .success => {},
             else => error.FailedToMapMemory,
         };
@@ -1040,54 +1140,62 @@ fn createIndexBuffer(self: *Engine, data: []const u16) !void {
         @memcpy(gpu_indices[0..data.len], data);
         vk.unmapMemory(self.device, staging_buffer_memory);
     }
-
-    try self.createBuffer(size, .initMany(&.{ .transfer_dst_bit, .index_buffer_bit }), .init(.device_local_bit), &self.index_buffer, &self.index_buffer_memory);
-
+    try self.createBuffer(
+        size,
+        .initMany(&.{ .transfer_dst_bit, .index_buffer_bit }),
+        .init(.device_local_bit),
+        &self.index_buffer,
+        &self.index_buffer_memory,
+    );
     try self.copyBuffer(staging_buffer, self.index_buffer, size);
-
     vk.destroyBuffer(self.device, staging_buffer, null);
     vk.freeMemory(self.device, staging_buffer_memory, null);
 }
 
-fn createBuffer(self: *Engine, size: vk.DeviceSize, usage: vk.BufferUsageFlags, props: vk.MemoryPropertyFlags, buffer: *vk.Buffer, memory: *vk.DeviceMemory) !void {
+fn createBuffer(
+    self: *Engine,
+    size: vk.DeviceSize,
+    usage: vk.BufferUsageFlags,
+    props: vk.MemoryPropertyFlags,
+    buffer: *vk.Buffer,
+    memory: *vk.DeviceMemory,
+) !void {
     const create_info = vk.BufferCreateInfo{
         .size = size,
         .usage = usage,
         .sharing_mode = .exclusive,
     };
-
     try switch (vk.createBuffer(self.device, &create_info, null, buffer)) {
         .success => {},
         else => error.FailedToCreateBuffer,
     };
-
     var mem_reqs: vk.MemoryRequirements = .{};
     vk.getBufferMemoryRequirements(self.device, buffer.*, &mem_reqs);
-
     const alloc_info = vk.MemoryAllocateInfo{
         .allocation_size = mem_reqs.size,
         .memory_type_index = try self.findMemoryType(mem_reqs.memory_type_bits, props),
     };
-
     try switch (vk.allocateMemory(self.device, &alloc_info, null, memory)) {
         .success => {},
         else => error.FailedToAllocateBufferMemory,
     };
-
     try switch (vk.bindBufferMemory(self.device, buffer.*, memory.*, 0)) {
         .success => {},
         else => error.FailedToBindBufferMemory,
     };
 }
 
-fn copyBuffer(self: *const Engine, src_buffer: vk.Buffer, dst_buffer: vk.Buffer, size: vk.DeviceSize) !void {
+fn copyBuffer(
+    self: *const Engine,
+    src_buffer: vk.Buffer,
+    dst_buffer: vk.Buffer,
+    size: vk.DeviceSize,
+) !void {
     const command_buffer = try self.beginSingleTimeCommands();
-
     const copy_region = vk.BufferCopy{
         .size = size,
     };
     vk.cmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
-
     try self.endSingleTimeCommands(command_buffer);
 }
 
@@ -1097,22 +1205,22 @@ fn beginSingleTimeCommands(self: *const Engine) !vk.CommandBuffer {
         .command_pool = self.command_pool,
         .command_buffer_count = 1,
     };
-
     var command_buffer: vk.CommandBuffer = .null;
-    try switch (vk.allocateCommandBuffers(self.device, &alloc_info, &command_buffer)) {
+    try switch (vk.allocateCommandBuffers(
+        self.device,
+        &alloc_info,
+        &command_buffer,
+    )) {
         .success => {},
         else => error.FailedToAllocateCommandBuffer,
     };
-
     const begin_info = vk.CommandBufferBeginInfo{
         .flags = .init(.one_time_submit_bit),
     };
-
     try switch (vk.beginCommandBuffer(command_buffer, &begin_info)) {
         .success => {},
         else => error.FailedToBeginCommandBuffer,
     };
-
     return command_buffer;
 }
 
@@ -1121,45 +1229,53 @@ fn endSingleTimeCommands(self: *const Engine, command_buffer: vk.CommandBuffer) 
         .success => {},
         else => error.FailedToEndCommandBuffer,
     };
-
     const submit_info = vk.SubmitInfo{
         .command_buffer_count = 1,
         .p_command_buffers = &command_buffer,
     };
-
     try switch (vk.queueSubmit(self.graphics_queue, 1, &submit_info, .null)) {
         .success => {},
         else => error.FailedToSubmitQueue,
     };
-
     try switch (vk.queueWaitIdle(self.graphics_queue)) {
         .success => {},
         else => error.FailedToIdleQueue,
     };
-
     vk.freeCommandBuffers(self.device, self.command_pool, 1, &command_buffer);
 }
 
-fn findMemoryType(self: *const Engine, type_filter: u32, props: vk.MemoryPropertyFlags) !u32 {
+fn findMemoryType(
+    self: *const Engine,
+    type_filter: u32,
+    props: vk.MemoryPropertyFlags,
+) !u32 {
     var mem_props: vk.PhysicalDeviceMemoryProperties = .{};
     vk.getPhysicalDeviceMemoryProperties(self.physical_device, &mem_props);
-
-    for (0..mem_props.memory_type_count) |i| {
-        if (((type_filter & (@as(u32, 1) << @truncate(i))) > 0) and ((mem_props.memory_types[i].property_flags.bits & props.bits) == props.bits)) {
+    for (0..mem_props.memory_type_count) |i|
+        if (((type_filter & (@as(u32, 1) << @truncate(i))) > 0) and
+            ((mem_props.memory_types[i].property_flags.bits & props.bits) == props.bits))
             return @truncate(i);
-        }
-    }
-
     return error.FailedTOFindSuitableMemoryType;
 }
 
 fn createUniformBuffers(self: *Engine) !void {
     const size = @sizeOf(UBO);
-
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
-        try self.createBuffer(size, .init(.uniform_buffer_bit), .initMany(&.{ .host_visible_bit, .host_coherent_bit }), &self.uniform_buffers[i], &self.uniform_buffer_memories[i]);
-
-        try switch (vk.mapMemory(self.device, self.uniform_buffer_memories[i], 0, size, .initEmpty(), &self.uniform_buffer_maps[i])) {
+        try self.createBuffer(
+            size,
+            .init(.uniform_buffer_bit),
+            .initMany(&.{ .host_visible_bit, .host_coherent_bit }),
+            &self.uniform_buffers[i],
+            &self.uniform_buffer_memories[i],
+        );
+        try switch (vk.mapMemory(
+            self.device,
+            self.uniform_buffer_memories[i],
+            0,
+            size,
+            .initEmpty(),
+            &self.uniform_buffer_maps[i],
+        )) {
             .success => {},
             else => error.FailedToMapMemory,
         };
@@ -1167,16 +1283,15 @@ fn createUniformBuffers(self: *Engine) !void {
 }
 
 fn createDescriptorPool(self: *const Engine) !vk.DescriptorPool {
-    const pool_size = vk.DescriptorPoolSize{
-        .descriptor_count = MAX_FRAMES_IN_FLIGHT,
+    const pool_sizes = [_]vk.DescriptorPoolSize{
+        .{ .descriptor_count = MAX_FRAMES_IN_FLIGHT },
+        .{ .descriptor_count = MAX_FRAMES_IN_FLIGHT },
     };
-
     const create_info = vk.DescriptorPoolCreateInfo{
-        .pool_size_count = 1,
-        .p_pool_sizes = &pool_size,
+        .pool_size_count = @truncate(pool_sizes.len),
+        .p_pool_sizes = &pool_sizes,
         .max_sets = MAX_FRAMES_IN_FLIGHT,
     };
-
     var pool: vk.DescriptorPool = .null;
     return switch (vk.createDescriptorPool(self.device, &create_info, null, &pool)) {
         .success => pool,
@@ -1185,15 +1300,19 @@ fn createDescriptorPool(self: *const Engine) !vk.DescriptorPool {
 }
 
 fn allocDescriptorSets(self: *Engine) !void {
-    var layouts = [_]vk.DescriptorSetLayout{self.descriptor_set_layout} ** MAX_FRAMES_IN_FLIGHT;
-
+    var layouts =
+        [_]vk.DescriptorSetLayout{self.descriptor_set_layout} ** MAX_FRAMES_IN_FLIGHT;
     const alloc_info = vk.DescriptorSetAllocateInfo{
         .descriptor_pool = self.descriptor_pool,
         .descriptor_set_count = MAX_FRAMES_IN_FLIGHT,
         .p_set_layouts = &layouts,
     };
 
-    try switch (vk.allocateDescriptorSets(self.device, &alloc_info, &self.descriptor_sets)) {
+    try switch (vk.allocateDescriptorSets(
+        self.device,
+        &alloc_info,
+        &self.descriptor_sets,
+    )) {
         .success => {},
         else => error.FailedToAllocateDescriptorSets,
     };
@@ -1204,19 +1323,38 @@ fn allocDescriptorSets(self: *Engine) !void {
             .offset = 0,
             .range = @sizeOf(UBO),
         };
-
-        const descriptor_write = vk.WriteDescriptorSet{
-            .dst_set = self.descriptor_sets[i],
-            .dst_binding = 0,
-            .dst_array_element = 0,
-            .descriptor_type = .uniform_buffer,
-            .descriptor_count = 1,
-            .p_buffer_info = &buffer_info,
-            .p_image_info = null, // for image descriptors
-            .p_texel_buffer_view = null, // for texture descriptors
+        const image_info = vk.DescriptorImageInfo{
+            .image_layout = .shader_read_only_optimal,
+            .image_view = self.texture_image_view,
+            .sampler = self.texture_sampler,
         };
-
-        vk.updateDescriptorSets(self.device, 1, &descriptor_write, 0, null);
+        const descriptor_writes = [_]vk.WriteDescriptorSet{
+            .{
+                .dst_set = self.descriptor_sets[i],
+                .dst_binding = 0,
+                .dst_array_element = 0,
+                .descriptor_type = .uniform_buffer,
+                .descriptor_count = 1,
+                .p_buffer_info = &buffer_info,
+                .p_image_info = null, // for image descriptors
+                .p_texel_buffer_view = null, // for texture descriptors
+            },
+            .{
+                .dst_set = self.descriptor_sets[i],
+                .dst_binding = 1,
+                .dst_array_element = 0,
+                .descriptor_type = .combined_image_sampler,
+                .descriptor_count = 1,
+                .p_image_info = &image_info,
+            },
+        };
+        vk.updateDescriptorSets(
+            self.device,
+            @truncate(descriptor_writes.len),
+            &descriptor_writes,
+            0,
+            null,
+        );
     }
 }
 
@@ -1226,8 +1364,11 @@ fn allocCommandBuffers(self: *Engine) !void {
         .level = .primary,
         .command_buffer_count = MAX_FRAMES_IN_FLIGHT,
     };
-
-    return switch (vk.allocateCommandBuffers(self.device, &alloc_info, &self.command_buffers)) {
+    return switch (vk.allocateCommandBuffers(
+        self.device,
+        &alloc_info,
+        &self.command_buffers,
+    )) {
         .success => {},
         else => error.FailedToAllocateCommandBuffers,
     };
@@ -1238,12 +1379,10 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
         .flags = .initEmpty(),
         .p_inheritance_info = null,
     };
-
     try switch (vk.beginCommandBuffer(command_buffer, &cb_begin_info)) {
         .success => {},
         else => error.FailedToBeginRecordingCommandBuffer,
     };
-
     const clear_color = vk.ClearValue{ .color = .{ .float32 = [4]f32{ 0, 0, 0, 1 } } };
     const rp_begin_info = vk.RenderPassBeginInfo{
         .render_pass = self.render_pass,
@@ -1255,11 +1394,8 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
         .clear_value_count = 1,
         .p_clear_values = &clear_color,
     };
-
     vk.cmdBeginRenderPass(command_buffer, &rp_begin_info, .@"inline");
-
     vk.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
-
     const viewport = vk.Viewport{
         .x = 0,
         .y = 0,
@@ -1269,25 +1405,29 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
         .max_depth = 1,
     };
     vk.cmdSetViewport(command_buffer, 0, 1, &viewport);
-
     const scissor = vk.Rect2D{
         .offset = .{ .x = 0, .y = 0 },
         .extent = self.swapchain_extent,
     };
     vk.cmdSetScissor(command_buffer, 0, 1, &scissor);
-
     vk.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
-
     const vertex_buffers = [_]vk.Buffer{self.vertex_buffer};
     const offsets = [_]vk.DeviceSize{0};
     vk.cmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffers, &offsets);
     vk.cmdBindIndexBuffer(command_buffer, self.index_buffer, 0, .uint16);
-    vk.cmdBindDescriptorSets(command_buffer, .graphics, self.pipeline_layout, 0, 1, &self.descriptor_sets[self.current_frame], 0, null);
+    vk.cmdBindDescriptorSets(
+        command_buffer,
+        .graphics,
+        self.pipeline_layout,
+        0,
+        1,
+        &self.descriptor_sets[self.current_frame],
+        0,
+        null,
+    );
     vk.cmdDrawIndexed(command_buffer, @as(u32, @truncate(self.indices.len)), 1, 0, 0, 0);
     // vk.cmdDraw(command_buffer, @truncate(vertices.len), 1, 0, 0);
-
     vk.cmdEndRenderPass(command_buffer);
-
     try switch (vk.endCommandBuffer(command_buffer)) {
         .success => {},
         else => error.FailedToRecordCommandBuffer,
@@ -1296,7 +1436,6 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
 
 fn createSemaphore(self: *const Engine) !vk.Semaphore {
     const create_info = vk.SemaphoreCreateInfo{};
-
     var semaphore: vk.Semaphore = .null;
     return switch (vk.createSemaphore(self.device, &create_info, null, &semaphore)) {
         .success => semaphore,
@@ -1308,7 +1447,6 @@ fn createFence(self: *const Engine) !vk.Fence {
     const create_info = vk.FenceCreateInfo{
         .flags = .init(.signaled_bit),
     };
-
     var fence: vk.Fence = .null;
     return switch (vk.createFence(self.device, &create_info, null, &fence)) {
         .success => fence,
@@ -1330,7 +1468,13 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     const axis3: V3 = .init(0);
     const view: M4 = axis2.lookAt(axis3, z_axis);
     // proj
-    const proj: M4 = persp(f32, std.math.degreesToRadians(45.0), self.aspect(), 0.1, 10.0);
+    const proj: M4 = persp(
+        f32,
+        std.math.degreesToRadians(45.0),
+        self.aspect(),
+        0.1,
+        10.0,
+    );
     var ubo = .{
         .model = model.toMat(),
         .view = view.toMat(),
@@ -1344,13 +1488,25 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
 }
 
 fn drawFrame(self: *Engine) !void {
-    try switch (vk.waitForFences(self.device, 1, &self.in_flight_fences[self.current_frame], .true, MAX_U64)) {
+    try switch (vk.waitForFences(
+        self.device,
+        1,
+        &self.in_flight_fences[self.current_frame],
+        .true,
+        MAX_U64,
+    )) {
         .success => {},
         else => error.FailedToWaitForFence,
     };
-
     var image_index: u32 = undefined;
-    try switch (vk.acquireNextImageKHR(self.device, self.swapchain, MAX_U64, self.image_available_semaphores[self.current_frame], .null, &image_index)) {
+    try switch (vk.acquireNextImageKHR(
+        self.device,
+        self.swapchain,
+        MAX_U64,
+        self.image_available_semaphores[self.current_frame],
+        .null,
+        &image_index,
+    )) {
         .success => {},
         .error_out_of_date_khr => {
             try self.recreateSwapchain();
@@ -1358,25 +1514,30 @@ fn drawFrame(self: *Engine) !void {
         },
         else => error.FailedToAcquireNextImage,
     };
-
     self.updateUniformBuffer(self.current_frame);
-
-    try switch (vk.resetFences(self.device, 1, &self.in_flight_fences[self.current_frame])) {
+    try switch (vk.resetFences(
+        self.device,
+        1,
+        &self.in_flight_fences[self.current_frame],
+    )) {
         .success => {},
         else => error.FailedToResetFences,
     };
-
-    try switch (vk.resetCommandBuffer(self.command_buffers[self.current_frame], .initEmpty())) {
+    try switch (vk.resetCommandBuffer(
+        self.command_buffers[self.current_frame],
+        .initEmpty(),
+    )) {
         .success => {},
         else => error.FailedToResetCommandBuffer,
     };
-
     try self.recordCommandBuffer(self.command_buffers[self.current_frame], image_index);
-
-    const wait_semaphores = [_]vk.Semaphore{self.image_available_semaphores[self.current_frame]};
+    const wait_semaphores = [_]vk.Semaphore{
+        self.image_available_semaphores[self.current_frame],
+    };
     const wait_stages = [_]vk.PipelineStageFlags{.init(.color_attachment_output_bit)};
-    const signal_semaphores = [_]vk.Semaphore{self.render_finished_semaphores[self.current_frame]};
-
+    const signal_semaphores = [_]vk.Semaphore{
+        self.render_finished_semaphores[self.current_frame],
+    };
     const submit_info = vk.SubmitInfo{
         .wait_semaphore_count = @truncate(wait_semaphores.len),
         .p_wait_semaphores = &wait_semaphores,
@@ -1386,12 +1547,15 @@ fn drawFrame(self: *Engine) !void {
         .signal_semaphore_count = @truncate(signal_semaphores.len),
         .p_signal_semaphores = &signal_semaphores,
     };
-
-    try switch (vk.queueSubmit(self.graphics_queue, 1, &submit_info, self.in_flight_fences[self.current_frame])) {
+    try switch (vk.queueSubmit(
+        self.graphics_queue,
+        1,
+        &submit_info,
+        self.in_flight_fences[self.current_frame],
+    )) {
         .success => {},
         else => error.FailedToSubmitDrawCommandBuffer,
     };
-
     const swapchains = [_]vk.SwapchainKHR{self.swapchain};
     const present_info = vk.PresentInfoKHR{
         .wait_semaphore_count = @truncate(signal_semaphores.len),
@@ -1401,7 +1565,6 @@ fn drawFrame(self: *Engine) !void {
         .p_image_indices = &image_index,
         .p_results = null,
     };
-
     try switch (vk.queuePresentKHR(self.present_queue, &present_info)) {
         .success => {},
         .error_out_of_date_khr, .suboptimal_khr => {
@@ -1410,7 +1573,6 @@ fn drawFrame(self: *Engine) !void {
         },
         else => error.FailedToPresentQueue,
     };
-
     self.current_frame = @mod(self.current_frame + 1, MAX_FRAMES_IN_FLIGHT);
 }
 
@@ -1420,9 +1582,15 @@ fn aspect(self: *const Engine) f32 {
     return width / height;
 }
 
-fn transitionImageLayout(self: *const Engine, image: vk.Image, format: vk.Format, old_layout: vk.ImageLayout, new_layout: vk.ImageLayout) !void {
+fn transitionImageLayout(
+    self: *const Engine,
+    image: vk.Image,
+    format: vk.Format,
+    old_layout: vk.ImageLayout,
+    new_layout: vk.ImageLayout,
+) !void {
+    _ = format;
     const command_buffer = try self.beginSingleTimeCommands();
-
     const barrier = vk.ImageMemoryBarrier{
         .old_layout = old_layout,
         .new_layout = new_layout,
@@ -1437,10 +1605,8 @@ fn transitionImageLayout(self: *const Engine, image: vk.Image, format: vk.Format
             .layer_count = 1,
         },
     };
-
     var src_stage: vk.PipelineStageFlags = .initEmpty();
     var dst_stage: vk.PipelineStageFlags = .initEmpty();
-
     if (old_layout == .undefined and new_layout == .transfer_dst_optimal) {
         barrier.src_access_mask = .initEmpty();
         barrier.dst_access_mask = .init(.transfer_write_bit);
@@ -1453,8 +1619,17 @@ fn transitionImageLayout(self: *const Engine, image: vk.Image, format: vk.Format
     } else {
         return error.UnsupportedLayoutTransition;
     }
-
-    vk.cmdPipelineBarrier(command_buffer, src_stage, dst_stage, .initEmpty(), 0, null, 0, null, 1, &barrier);
-
+    vk.cmdPipelineBarrier(
+        command_buffer,
+        src_stage,
+        dst_stage,
+        .initEmpty(),
+        0,
+        null,
+        0,
+        null,
+        1,
+        &barrier,
+    );
     try self.endSingleTimeCommands(command_buffer);
 }
