@@ -215,3 +215,81 @@ swapchain:
 # Networking:
 
 # Reinforcement Learning:
+
+# Determinants: 
+- formulas for computing area / volume much easier 
+- determinant = helps measure area + volume + matrix is invertible
+- how to measure area of lake?
+    - calculus 
+    - grid overlay = approximate 
+    - triangles = web of triangles = fewer shapes + better fit = solve as area 
+- strats work if area/volume is easy 
+- coords -> vectors 
+- 3 points (3, 1), (5, 2), (4, 5)
+    - hard way = length of base + height = 1/2 a b
+    - easy way = put rectangle around triangle - compute area of rectangle
+    - easier way = translate triangle to origin - instead of 3 points, use 2 vectors
+    - area of triangle = |ad - bc| = determinant
+    - determinant = determines if a matrix is invertible
+    - a square matrix is invertible iff col vectors are linearly independent
+        - independent = no vector is a linear combination of the others
+    - if A = [a, b; c, d] then A-1 = inverse of A = 1/(ad - bc) * [d, -b; -c a] = determinant of A * adjoint of A;
+    - orientation = order in vertices (cw vs ccw)
+
+# Homogeneous Coordinates:
+- 3d translations using only matrix multiplications
+- object space -> world space -> virtual camera -> project scene -> final image
+- multiply all 3x3 matrices into 1 3x3 matrix to do a single matrix for computation
+- no 3x3 does a translation
+- 
+
+# Kaynesian Beauty Contest:
+- regular beauty contests: pick who you think is the most beautiful
+- Kaynes = gay 
+- his beauty contest: if you pick the winner of the contest, you win a big prize
+    - also look around + pick who everyone else finds the most beautiful
+- storytelling era of stock market
+- top 4 biggest companies = computer memory (sandisk, western digital, micron, seagate, robinhood - #5 b/c prediction markets)
+- AI industry walked to memory industry for better memory
+    - Kiosia = #1 japan stock = sells computer memory
+- Prediction Markets: Robinhood, Kalshi, Polymarket
+- Warner Bros. Discovery = Debt ridden hollywood market that rose in value from netflix competing to buy them
+- AI story: who can show AI or show AI growth 
+    - google was winner this year + fierce competitor
+- DJT + NATO - US pulls back from NATO - Europe spend on military = surge of military defense stocks
+    - Germany + Rheinmetall is surging
+    - Renk Group AG
+    - UK has Babcock International Group
+    - Exail Tech. = French undersea drones
+- Gold Story:
+    - diversification against dollar 
+    - central banks buy gold 
+    - retreat from inflation 
+- Silver Story:
+    - precious metals go up during inflation 
+    - industrial demand for silver increases: solar panels, electric vehicles, future forward tech
+- Cycle of Precious Metals: Gold Rises -> Silver Rises -> Gold Miners -> Silver Miners
+- Fresnilo (Mexican Silver Mines) = doing well
+- Marketing (Performing Poorly)
+    - Trade Desk = Single Worst Performing Company
+    - WPP = failed this year
+    - make money from small-med businesses spending on ads = first to cut marketing during a downturn
+        - pressure of tariffs, reduced consumer spending, uncertain economy
+        - cost-cutting AI from large companies
+- Food (Mid Tier Fast Casual):
+    - Chipotle - consumers not getting slop bowls - 2024 stock narrative = fast-growing future-forward loved by millenials + gen z - down 37%
+    - Kava = down 47%
+    - Sweetgreen = down 78%
+- Target = 27% down
+- Walmart = 24% up = recession indicator
+- Bitcoin = Flat
+- Max Stupid = Microstrategy = scam of buying bitcoin for you
+- Campbell Soup = omega viral of exec saying product is bad + fake meat = damaged brand
+- Tariffs
+    - companies that import a lot (Nike, Lululemon) = lost profits
+- Nuclear Stocks:
+    - Cameco = up 59%
+    - GE Vernova = up 96%
+    - Oklo Inc = up 252%
+    - absolutely story based, no revenue
+    - AI datacenters = huge surge in nuclear energy

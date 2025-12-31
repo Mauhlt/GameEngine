@@ -51,6 +51,7 @@ command_pool: vk.CommandPool = .null,
 texture_image: vk.Image = .null,
 texture_image_memory: vk.DeviceMemory = .null,
 texture_image_view: vk.ImageView = .null,
+texture_sampler: vk.Sampler = .null,
 // vertex buffers
 vertex_buffer: vk.Buffer = .null,
 vertex_buffer_memory: vk.DeviceMemory = .null,
@@ -121,11 +122,11 @@ pub fn init(
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
     // buffers
-    try self.createTextureImage(allo);
-    try self.createTextureImageView();
-    try self.createVertexBuffer(&self.vertices);
-    try self.createIndexBuffer(&self.indices);
-    try self.createUniformBuffers();
+    try self.createTextureImage(allo); // need to split
+    self.texture_image_view = try self.createTextureImageView();
+    try self.createVertexBuffer(&self.vertices); // need to split
+    try self.createIndexBuffer(&self.indices); // need to split
+    try self.createUniformBuffers(); // need to split
     // descriptor pool
     self.descriptor_pool = try self.createDescriptorPool();
     try self.allocDescriptorSets();
@@ -595,12 +596,11 @@ fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
 fn createDescriptorSetLayout(self: *const Engine) !vk.DescriptorSetLayout {
     const ubo_layout_binding = vk.DescriptorSetLayoutBinding{
         .binding = 0,
-        .descriptor_type = .uniform_buffer,
         .descriptor_count = 1,
-        .stage_flags = .init(.vertex_bit),
+        .descriptor_type = .uniform_buffer,
         .p_immutable_samplers = null,
+        .stage_flags = .init(.vertex_bit),
     };
-
     const sampler_layout_binding = vk.DescriptorSetLayoutBinding{
         .binding = 1,
         .descriptor_count = 1,
@@ -608,17 +608,14 @@ fn createDescriptorSetLayout(self: *const Engine) !vk.DescriptorSetLayout {
         .p_immutable_samplers = null,
         .stage_flags = .init(.fragment_bit),
     };
-
     const bindings = [_]vk.DescriptorSetLayoutBinding{
         ubo_layout_binding,
         sampler_layout_binding,
     };
-
     const create_info = vk.DescriptorSetLayoutCreateInfo{
         .binding_count = @truncate(bindings.len),
-        .p_bindings = &ubo_layout_binding,
+        .p_bindings = &bindings,
     };
-
     var descriptor_set_layout: vk.DescriptorSetLayout = .null;
     return switch (vk.createDescriptorSetLayout(
         self.device,
@@ -847,7 +844,7 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 }
 
-fn createTextureImage(self: *const Engine, allo: std.mem.Allocator) !void {
+fn createTextureImage(self: *Engine, allo: std.mem.Allocator) !void {
     // init img loader
     zstbi.init(allo);
     defer zstbi.deinit();
@@ -865,18 +862,12 @@ fn createTextureImage(self: *const Engine, allo: std.mem.Allocator) !void {
     var img = try zstbi.Image.loadFromFile("./textures/texture.jpg", 0);
     defer img.deinit();
     // data, width, height, num_components, bytes per component, bytes per row, is hdr
-    // std.debug.print("Data Len: {}\n", .{img.data.len});
-    // std.debug.print("Width: {}, Height: {}\n", .{ img.width, img.height });
-    // std.debug.print("# Of Components: {}\n", .{img.num_components}); // 3 = rgb
-
     // check if successful
     const image_size: vk.DeviceSize = img.width * img.height * 4;
     if (img.data.len == 0) return error.FailedToLoadTextureImg;
-
     // create staging
     var staging_buffer: vk.Buffer = .null;
     var staging_buffer_memory: vk.DeviceMemory = .null;
-
     // create buffer
     try self.createBuffer(
         image_size,
@@ -885,11 +876,9 @@ fn createTextureImage(self: *const Engine, allo: std.mem.Allocator) !void {
         &staging_buffer,
         &staging_buffer_memory,
     );
-
     // cleanup buffer
     defer vk.destroyBuffer(self.device, staging_buffer, null);
     defer vk.freeMemory(self.device, staging_buffer_memory, null);
-
     {
         var gpu_ptr: ?*anyopaque = null;
         try switch (vk.mapMemory(
@@ -903,33 +892,33 @@ fn createTextureImage(self: *const Engine, allo: std.mem.Allocator) !void {
             .success => {},
             else => error.FailedToMapMemory,
         };
-        var gpu_vertices: [*]Vertex = @ptrCast(@alignCast(gpu_ptr));
+        var gpu_vertices: [*]u8 = @ptrCast(@alignCast(gpu_ptr));
         @memcpy(gpu_vertices[0..img.data.len], img.data);
         vk.unmapMemory(self.device, staging_buffer_memory);
     }
-
     try self.createImage(
         img.width,
         img.height,
         .r8g8b8a8_srgb,
         .init(.optimal),
-        .initMany(&.{ .transfer_dst_bit, .usage_sampled_bit }),
+        .initMany(&.{ .transfer_dst_bit, .sampled_bit }),
         .init(.device_local_bit),
+        &self.texture_image,
+        &self.texture_image_memory,
     );
-
-    try transitionImageLayout(
+    try self.transitionImageLayout(
         self.texture_image,
         .r8g8b8a8_srgb,
         .undefined,
         .transfer_dst_optimal,
     );
-    try copyBufferToImage(
+    try self.copyBufferToImage(
         staging_buffer,
         self.texture_image,
         img.width,
         img.height,
     );
-    try transitionImageLayout(
+    try self.transitionImageLayout(
         self.texture_image,
         .r8g8b8a8_srgb,
         .transfer_dst_optimal,
@@ -942,7 +931,7 @@ fn createImage(
     width: u32,
     height: u32,
     format: vk.Format,
-    tiling: vk.ImageTiling,
+    tiling: vk.ImageTilingFlags,
     usage: vk.ImageUsageFlags,
     props: vk.MemoryPropertyFlags,
     image: *vk.Image,
@@ -1008,8 +997,8 @@ fn copyBufferToImage(
             .base_array_layer = 0,
             .layer_count = 1,
         },
-        .image_offset = .{ 0, 0, 0 },
-        .image_extent = .{ width, height, 1 },
+        .image_offset = .{ .x = 0, .y = 0, .z = 0 },
+        .image_extent = .{ .width = width, .height = height, .depth = 1 },
     };
     vk.cmdCopyBufferToImage(
         command_buffer,
@@ -1307,7 +1296,6 @@ fn allocDescriptorSets(self: *Engine) !void {
         .descriptor_set_count = MAX_FRAMES_IN_FLIGHT,
         .p_set_layouts = &layouts,
     };
-
     try switch (vk.allocateDescriptorSets(
         self.device,
         &alloc_info,
@@ -1316,7 +1304,6 @@ fn allocDescriptorSets(self: *Engine) !void {
         .success => {},
         else => error.FailedToAllocateDescriptorSets,
     };
-
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         const buffer_info = vk.DescriptorBufferInfo{
             .buffer = self.uniform_buffers[i],
@@ -1328,7 +1315,7 @@ fn allocDescriptorSets(self: *Engine) !void {
             .image_view = self.texture_image_view,
             .sampler = self.texture_sampler,
         };
-        const descriptor_writes = [_]vk.WriteDescriptorSet{
+        var descriptor_writes = [_]vk.WriteDescriptorSet{
             .{
                 .dst_set = self.descriptor_sets[i],
                 .dst_binding = 0,
@@ -1346,6 +1333,7 @@ fn allocDescriptorSets(self: *Engine) !void {
                 .descriptor_type = .combined_image_sampler,
                 .descriptor_count = 1,
                 .p_image_info = &image_info,
+                .p_texel_buffer_view = null,
             },
         };
         vk.updateDescriptorSets(
@@ -1591,11 +1579,11 @@ fn transitionImageLayout(
 ) !void {
     _ = format;
     const command_buffer = try self.beginSingleTimeCommands();
-    const barrier = vk.ImageMemoryBarrier{
+    var barrier = vk.ImageMemoryBarrier{
         .old_layout = old_layout,
         .new_layout = new_layout,
-        .src_queue_family_index = .queue_family_ignored,
-        .dst_queue_family_index = .queue_family_ignored,
+        .src_queue_family_index = vk.QueueFamilyIgnored, // .queue_family_ignored,
+        .dst_queue_family_index = vk.QueueFamilyIgnored, // .queue_family_ignored,
         .image = image,
         .subresource_range = .{
             .aspect_mask = .init(.color_bit),
@@ -1610,7 +1598,6 @@ fn transitionImageLayout(
     if (old_layout == .undefined and new_layout == .transfer_dst_optimal) {
         barrier.src_access_mask = .initEmpty();
         barrier.dst_access_mask = .init(.transfer_write_bit);
-
         src_stage = .init(.top_of_pipe_bit);
         dst_stage = .init(.transfer_bit);
     } else if (old_layout == .transfer_dst_optimal and new_layout == .shader_read_only_optimal) {
