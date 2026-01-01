@@ -129,7 +129,7 @@ pub fn init(
     try self.createUniformBuffers(); // need to split
     // descriptor pool
     self.descriptor_pool = try self.createDescriptorPool();
-    try self.allocDescriptorSets();
+    try self.allocDescriptorSets(); // must be after uniform buffers + textures
     // sync objects
     for (0..MAX_FRAMES_IN_FLIGHT) |i| {
         self.image_available_semaphores[i] = try self.createSemaphore();
@@ -1272,18 +1272,18 @@ fn createUniformBuffers(self: *Engine) !void {
 }
 
 fn createDescriptorPool(self: *const Engine) !vk.DescriptorPool {
-    const pool_sizes = [_]vk.DescriptorPoolSize{
-        .{ .descriptor_count = MAX_FRAMES_IN_FLIGHT },
-        .{ .descriptor_count = MAX_FRAMES_IN_FLIGHT },
+    const pool_sizes: [2]vk.DescriptorPoolSize = .{
+        .{ .type = .uniform_buffer, .descriptor_count = MAX_FRAMES_IN_FLIGHT },
+        .{ .type = .combined_image_sampler, .descriptor_count = MAX_FRAMES_IN_FLIGHT },
     };
     const create_info = vk.DescriptorPoolCreateInfo{
         .pool_size_count = @truncate(pool_sizes.len),
         .p_pool_sizes = &pool_sizes,
         .max_sets = MAX_FRAMES_IN_FLIGHT,
     };
-    var pool: vk.DescriptorPool = .null;
-    return switch (vk.createDescriptorPool(self.device, &create_info, null, &pool)) {
-        .success => pool,
+    var descriptor_pool: vk.DescriptorPool = .null;
+    return switch (vk.createDescriptorPool(self.device, &create_info, null, &descriptor_pool)) {
+        .success => descriptor_pool,
         else => error.FailedToCreateDescriptorPool,
     };
 }
@@ -1296,6 +1296,7 @@ fn allocDescriptorSets(self: *Engine) !void {
         .descriptor_set_count = MAX_FRAMES_IN_FLIGHT,
         .p_set_layouts = &layouts,
     };
+    // descriptor sets must equal layouts.len
     try switch (vk.allocateDescriptorSets(
         self.device,
         &alloc_info,
@@ -1323,8 +1324,8 @@ fn allocDescriptorSets(self: *Engine) !void {
                 .descriptor_type = .uniform_buffer,
                 .descriptor_count = 1,
                 .p_buffer_info = &buffer_info,
-                .p_image_info = null, // for image descriptors
-                .p_texel_buffer_view = null, // for texture descriptors
+                // .p_image_info = null, // for image descriptors
+                // .p_texel_buffer_view = null, // for texture descriptors
             },
             .{
                 .dst_set = self.descriptor_sets[i],
@@ -1333,7 +1334,7 @@ fn allocDescriptorSets(self: *Engine) !void {
                 .descriptor_type = .combined_image_sampler,
                 .descriptor_count = 1,
                 .p_image_info = &image_info,
-                .p_texel_buffer_view = null,
+                // .p_texel_buffer_view = null,
             },
         };
         vk.updateDescriptorSets(

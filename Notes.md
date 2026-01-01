@@ -293,3 +293,114 @@ swapchain:
     - Oklo Inc = up 252%
     - absolutely story based, no revenue
     - AI datacenters = huge surge in nuclear energy
+
+
+# Accidentally Made a Speedrunner Game:
+- created a base version of a game that switches based on color 
+- made it more fun by adding a jump when one transitions colors
+
+# Why are GPUs good at Graphics?
+- vertices = 3d point cloud -> project to 2d surface = cameras 
+- simulate camera at origin - lookt at -z dir - compute how light reaches vertex at each point
+- pinpoint camera:
+    - x' = -x f / z
+    - y' = -y f / z
+- simulated cameras: (trick #1: don't flip)
+    - x' = x f / z
+    - y' = y f / z
+    - skip neg to prevent flipping upside down
+- trick #2: 
+    - place camera at origin 
+    - apply transformations to object (world is moving instead of camera moving)
+    - homogeneous coordinates
+- cartesian coordinates: represent world-space w/ 3 coords (x, y, z)
+- homogeneous coordinates: represent world-space w/ 4 coords (x, y, z, 1)
+    - translations + rotations = matrix multiplications
+    - chain matrices = combo of transformations
+    - compute inverse easily = undo transformations
+    - model matrix = position + orientation
+    - view matrix = put in coord of camera
+    - proj matrix = project object onto camera
+        - persp proj = far is farther than near
+            - around 60 degs = human
+            - wider deg = fish-eye effect
+            - narrower = flat effect
+            - dolly zoom effect = impression that background recedes while camera comes in close
+        - parameters = based on near + far planes
+        - Steps:
+            - model * view * proj, Ex: P V M p = [x; y; z; w;]
+                - P = proj
+                - V = view 
+                - M = model
+            - perspective division = normalize coords based on w
+    - parallel proj = everything is similar
+        - far objects apear as close as near objects
+        - orthographic = parallel + eye with infinite view = easy to measure dimensions
+    - parallelizable: 
+        - each vertex multiplied by same matrix (pre-compute matrix - multiply each vertex)
+- rasterization 
+    - break down geometry into pixels on a screen 
+    - create bounding box around geometry 
+    - define 3 equations: 1 for each side of triangle = defines pixels insead geometry
+        - Eq: 1. E1(p) = (px - Ax)(Bx - Ay) - (py - Ay)(Bx - Ax), (repeat for other 2 edges)
+            - px = pixel coordinate
+            - Ax = x component of point A
+            - py = pixel coordinate
+            - Ay = y component of point A
+        - pixel is inside p iff E1(p) >= 0 and E2(p) and E3(p)
+    - optimizations 
+        - z buffer = depth buffer = tracks depths of each pixel
+        - back-face culling = cull triangles away from camera = why objects disappear when camera passes through objects
+        - clip triangles = if out of camera scope = stop rendering them
+            - for more accuracy = rasterize these and re-show them
+- Color 
+    - depends on surface
+    - flat/textures
+    - cannot superimpose textures = wrong perspective
+    - high defn textures / small triangles
+        - compute barycentric coordinates = P = alpha A + Beta b + gamma C
+        - compute uv, uv = aplha uva + beta uvb + gamma uvb
+    - small defn textures / large triangles 
+        - above + linear interpolation regions = smoother transitions
+- Shading
+    - shaders = gpu programs
+    - smooth surface = reflect = specular reflection
+    - rough surface = scattered = diffuse reflection
+    - position of light, position of camera, geometry of object, material properties 
+    - inverse colors, simulate glow, simulate metal, simulate different lighting
+
+# How does a 2D creature see curved space?
+- artem yashim = cool physics simulations = guy is insane
+- flat creature in 2D surface = wormhole is weird
+- conic sections, wormhole, torus 
+- optozorax = great at portals + physics of portals
+- sdf = fn to a distance
+- holonomy = change in position result in change in rotation (hapeens on non-euclidean spaces)
+- digon = impossible in 2d = shape with two points
+- when arrow follows geodesic (straight path in curved space) = it looks awesome
+- torus: 
+    - walk on inside curve = seems to push out
+    - walk on outside curve = seems to push in
+    - gaussian curvature
+        - pos curvature = spherical space = tiny deviations mean you walk towards center
+        - neg curvature = hyperbolic space = tiny deviations mean you walk away from center
+- Clifford torus
+    - 4d torus - space becomes flat
+    - asteroid = torus in 4d space to be flat
+- Klein bottle 
+    - intersects in 3d 
+    - no intersection in 4d
+- Wormhole w/ Flat Tunnel
+    - normal wormhole = pos or neg curvature = pulls / pushes you from center
+    - to do a flat wormhole = use a cylinder where only edges show curvature
+- What is curvature? 
+    - 1d being cannot detect curvature on 1d object 
+    - 2d object = intrinsic curvature = gaussian curvature = curvature along 2 axes
+        - curvature along both axes in same direction = pos curvature 
+        - curvature along both axes in opp directions = neg curvature 
+        - curvature along 1 axes + flat along other = flat surface
+            - paper = flat = cannot change curvature, roll into tube, still paper = still flat
+- String Theory: Kaluza-Klein space = extra dimensions but they are tiny + folded = non-interactable
+- Light: only bends in space w/ non-zero curvature
+- create wormhole effect in your game - so cool
+- is there a 4d way to do this? - Arbgeom - Basic 3D slice-map moving wormholse, duo-cylinder, interpolation
