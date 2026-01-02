@@ -125,6 +125,7 @@ pub fn init(
     // buffers
     try self.createTextureImage(allo); // need to split
     self.texture_image_view = try self.createTextureImageView();
+    self.texture_sampler = try self.createTextureSampler();
     try self.createVertexBuffer(&self.vertices); // need to split
     try self.createIndexBuffer(&self.indices); // need to split
     try self.createUniformBuffers(); // need to split
@@ -373,11 +374,11 @@ fn createLogicalDevice(self: *const Engine, rdes: []const [*:0]const u8) !vk.Dev
         .flags = 0,
         .queue_create_info_count = if (qfi.isSameFamily()) 1 else @truncate(qcis.len),
         .p_queue_create_infos = &qcis,
+        .p_enabled_features = &feats,
         .enabled_extension_count = @truncate(rdes.len),
         .pp_enabled_extension_names = @ptrCast(rdes),
         .enabled_layer_count = 0,
         .pp_enabled_layer_names = null,
-        .p_enabled_features = &feats,
     };
     var device: vk.Device = .null;
     return switch (vk.createDevice(self.physical_device, &create_info, null, &device)) {
@@ -929,6 +930,62 @@ fn createTextureImage(self: *Engine, allo: std.mem.Allocator) !void {
     );
 }
 
+fn createTextureImageView(self: *const Engine) !vk.ImageView {
+    return self.createImageView(self.texture_image, .r8g8b8a8_srgb);
+}
+
+fn createTextureSampler(self: *const Engine) !vk.Sampler {
+    var props: vk.PhysicalDeviceProperties = .{};
+    vk.getPhysicalDeviceProperties(self.physical_device, &props);
+    // instead of anisotropy on, can do anisotropyenable = false + max_anisotropy = 1.0
+    const create_info = vk.SamplerCreateInfo{
+        .mag_filter = .linear,
+        .min_filter = .linear,
+        .address_mode_u = .repeat,
+        .address_mode_v = .repeat,
+        .address_mode_w = .repeat,
+        .anisotropy_enable = .true,
+        .max_anisotropy = props.limits.max_sampler_anisotropy,
+        .border_color = .float_opaque_black,
+        .unnormalized_coordinates = .false,
+        .compare_enable = .false,
+        .compare_op = .always,
+        .mipmap_mode = .linear,
+        // .mip_lod_bias = 0.0,
+        // .min_lod = 0.0,
+        // .max_lod = 0.0,
+    };
+    var texture_sampler: vk.Sampler = .null;
+    return switch (vk.createSampler(self.device, &create_info, null, &texture_sampler)) {
+        .success => texture_sampler,
+        else => error.FailedToCreateTextureSampler,
+    };
+}
+
+fn createImageView(
+    self: *const Engine,
+    image: vk.Image,
+    format: vk.Format,
+) !vk.ImageView {
+    const create_info = vk.ImageViewCreateInfo{
+        .image = image,
+        .view_type = .@"2d",
+        .format = format,
+        .subresource_range = .{
+            .aspect_mask = .init(.color_bit),
+            .base_mip_level = 0,
+            .level_count = 1,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        },
+    };
+    var image_view: vk.ImageView = .null;
+    return switch (vk.createImageView(self.device, &create_info, null, &image_view)) {
+        .success => image_view,
+        else => error.FailedToCreateTextureImageView,
+    };
+}
+
 fn createImage(
     self: *const Engine,
     width: u32,
@@ -990,7 +1047,7 @@ fn transitionImageLayout(
     new_layout: vk.ImageLayout,
 ) !void {
     _ = format;
-    const command_buffer = try self.beginSingleTimeCommands();
+    var command_buffer = try self.beginSingleTimeCommands();
     var barrier = vk.ImageMemoryBarrier{
         .old_layout = old_layout,
         .new_layout = new_layout,
@@ -1036,7 +1093,7 @@ fn transitionImageLayout(
         1,
         &barrier,
     );
-    try self.endSingleTimeCommands(command_buffer);
+    try self.endSingleTimeCommands(&command_buffer);
 }
 
 fn copyBufferToImage(
@@ -1046,7 +1103,7 @@ fn copyBufferToImage(
     width: u32,
     height: u32,
 ) !void {
-    const command_buffer = try self.beginSingleTimeCommands();
+    var command_buffer = try self.beginSingleTimeCommands();
     const region: vk.BufferImageCopy = .{
         .buffer_offset = 0,
         .buffer_row_length = 0,
@@ -1068,63 +1125,7 @@ fn copyBufferToImage(
         1,
         &region,
     );
-    try self.endSingleTimeCommands(command_buffer);
-}
-
-fn createTextureImageView(self: *const Engine) !vk.ImageView {
-    return self.createImageView(self.texture_image, .r8g8b8a8_srgb);
-}
-
-fn createImageView(
-    self: *const Engine,
-    image: vk.Image,
-    format: vk.Format,
-) !vk.ImageView {
-    const create_info = vk.ImageViewCreateInfo{
-        .image = image,
-        .view_type = .@"2d",
-        .format = format,
-        .subresource_range = .{
-            .aspect_mask = .init(.color_bit),
-            .base_mip_level = 0,
-            .level_count = 1,
-            .base_array_layer = 0,
-            .layer_count = 1,
-        },
-    };
-    var image_view: vk.ImageView = .null;
-    return switch (vk.createImageView(self.device, &create_info, null, &image_view)) {
-        .success => image_view,
-        else => error.FailedToCreateTextureImageView,
-    };
-}
-
-fn createTextureSampler(self: *const Engine) !vk.Sampler {
-    var props: vk.PhysicalDeviceProperties = .{};
-    vk.getPhysicalDeviceProperties(self.physical_device, &props);
-    // instead of anisotropy on, can do anisotropyenable = false + max_anisotropy = 1.0
-    const create_info = vk.SamplerCreateInfo{
-        .mag_filter = .linear,
-        .min_filter = .linear,
-        .address_mode_u = .repeat,
-        .address_mode_v = .repeat,
-        .address_mode_w = .repeat,
-        .anisotropy_enable = .true,
-        .max_anisotropy = props.limits.max_sampler_anisotropy,
-        .border_color = .float_opaque_black,
-        .unnormalized_coordinates = .false,
-        .compare_enable = .false,
-        .compare_op = .always,
-        .mip_map_mode = .linear,
-        // .mip_lod_bias = 0.0,
-        // .min_lod = 0.0,
-        // .max_lod = 0.0,
-    };
-    var texture_sampler: vk.Sampler = .null;
-    return switch (vk.createSampler(self.device, &create_info, null, &texture_sampler)) {
-        .success => texture_sampler,
-        else => error.FailedToCreateTextureSampler,
-    };
+    try self.endSingleTimeCommands(&command_buffer);
 }
 
 fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
@@ -1240,12 +1241,12 @@ fn copyBuffer(
     dst_buffer: vk.Buffer,
     size: vk.DeviceSize,
 ) !void {
-    const command_buffer = try self.beginSingleTimeCommands();
+    var command_buffer = try self.beginSingleTimeCommands();
     const copy_region = vk.BufferCopy{
         .size = size,
     };
     vk.cmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
-    try self.endSingleTimeCommands(command_buffer);
+    try self.endSingleTimeCommands(&command_buffer);
 }
 
 fn beginSingleTimeCommands(self: *const Engine) !vk.CommandBuffer {
@@ -1266,21 +1267,20 @@ fn beginSingleTimeCommands(self: *const Engine) !vk.CommandBuffer {
     const begin_info = vk.CommandBufferBeginInfo{
         .flags = .init(.one_time_submit_bit),
     };
-    try switch (vk.beginCommandBuffer(command_buffer, &begin_info)) {
-        .success => {},
+    return switch (vk.beginCommandBuffer(command_buffer, &begin_info)) {
+        .success => command_buffer,
         else => error.FailedToBeginCommandBuffer,
     };
-    return command_buffer;
 }
 
-fn endSingleTimeCommands(self: *const Engine, command_buffer: vk.CommandBuffer) !void {
-    try switch (vk.endCommandBuffer(command_buffer)) {
+fn endSingleTimeCommands(self: *const Engine, command_buffer: *vk.CommandBuffer) !void {
+    try switch (vk.endCommandBuffer(command_buffer.*)) {
         .success => {},
         else => error.FailedToEndCommandBuffer,
     };
     const submit_info = vk.SubmitInfo{
         .command_buffer_count = 1,
-        .p_command_buffers = &command_buffer,
+        .p_command_buffers = command_buffer,
     };
     try switch (vk.queueSubmit(self.graphics_queue, 1, &submit_info, .null)) {
         .success => {},
@@ -1290,7 +1290,7 @@ fn endSingleTimeCommands(self: *const Engine, command_buffer: vk.CommandBuffer) 
         .success => {},
         else => error.FailedToIdleQueue,
     };
-    vk.freeCommandBuffers(self.device, self.command_pool, 1, &command_buffer);
+    vk.freeCommandBuffers(self.device, self.command_pool, 1, command_buffer);
 }
 
 fn findMemoryType(
