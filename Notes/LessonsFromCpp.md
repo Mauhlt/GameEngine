@@ -1,0 +1,24 @@
+- learn language syntax
+- make mutiple games
+- repl
+- create an engine
+- create a physics engine
+    - particle model
+    - velocity
+    - acceleration
+    - torque
+    - thrust
+    - rigidbodies
+    - rotations
+    - collisions
+    - buoyancy
+- NVIDIA gpu gems
+- create compute shader programs
+- create many types of shaders
+    - fresnel glow
+    - metal 
+    - emissive
+    - noise
+- scale physics up to billions of triangles
+- voxel engine
+- tetrahedral engine

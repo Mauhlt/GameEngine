@@ -1,0 +1,94 @@
+# Making a GPU Engine From Scratch:
+- triangle fn = create a fn that creates triangles
+- Scenes:
+    - create cube   
+    - add light to make more flexible
+    - add 1000 cubes
+    - add cube on cube interactions
+- cpu = master painter = precise
+- gpu = mcdonalds painter = parallel
+- render 1 million cubes
+- Movement
+    - xt = x0 + v0 dt (position)
+    - thetat = theta0 + w0 dt (rotation)
+- updates = in parallel
+    - take in positions, rotations, velocities, ang velocities
+    - each thread updates specific object = based on id
+    - grab objects properties (position, rotation, velocity, ang velocity)
+    - update values
+- collisions
+    - broad phase 
+        - bounding spheres = must contain object 
+            - radii = precomputable = test if faster to store or compute each run
+            - if dist > sum of radii = not colliding
+            - if dist < sum of radii = colliding
+            - has false + true positives
+    - narrow phase
+        - separating axis = 1 axis where 2 objects do not overlap = no collision
+            - 2d = normal of all edges
+            - 3d = all face normals + cross product for each pair of edge combination
+            - more expensive than bounding spheres
+- Handle Collisions: 
+    - color a collision differently (gray = none, red = collides)
+    - type of collision
+        - elastic
+        - partial elastic
+        - nonelastic
+    - techniques    
+        - reflect along both objects
+        - reflect along normals
+        - take mass into consideration
+    - impulse = sudden burst of force applied at an instance
+    - steps: 
+        - compute normal
+        - compute relative velocity (obj A - obj B)
+        - compute relative normal = dot(relative, normal)
+        - compute restitution = material property (0 - 1)
+        - compute inv combined mass
+        - compute mag = (1.0 + e) * rel normal / combined inv mass
+        - compute impulse = mag * norm
+        - compute delta velocity a = impulse / mass A
+        - compute delta velocity b = impulse / mass B
+        - add to obj A velocity 
+        - sub to obj B velocity
+
+# Designing a Physics Engine in 5 mins
+https://www.youtube.com/watch?v=-_IspRG548E
+- do they want to simulate dynamics?
+    - compute new position of objects using velocity + position
+    - version 1:
+        - v = v0 + at
+        - dx = v0t + 1/2at^2
+    - version 2:
+        - v = v0 + F/m t
+        - x = x0 + vt
+- do they want to detect collisions?
+    - broad
+        - point on each shape furthest into the other
+        - find normal
+        - abstract shapes and only worry about points
+    - narrow
+        - 
+    - types of colliders
+        - sphere collider
+            - sphere vs sphere = in same file
+            - sphere vs plane = can be either file, instead use a diff file called algo
+        - plane collider
+    - features:
+        - position + scale + rotation
+        - /*separate step into their own file/*
+- do they want to act/react on collisions?
+    - create a solver
+    - create a list of collisions -> feed to each solver
+    - types: impulse + position solver
+- do they want specific forces (ie. gravity)?
+- Use Handles:
+    - pointers into physics system = it doesn't have to worry about memory
+    - using integers instead of pointers = safer to modify + better control + faster
+- Additional Options:
+    - static objects
+    - dynamic objects
+    - collision objects
+    - rigidbody structs
+    - using booleans =/= not best practice
+    - split collision + dynamics

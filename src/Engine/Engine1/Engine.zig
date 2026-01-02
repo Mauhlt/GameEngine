@@ -2,7 +2,8 @@ const std = @import("std");
 const Extensions = @import("Extensions.zig");
 const QFI = @import("QueueFamilyIndices.zig");
 const SSD = @import("SwapchainSupportDetails.zig");
-const Vertex = @import("Vertex.zig");
+const Vertex2D = @import("Vertex/Vertex2D.zig");
+const Vertex3D = @import("Vertex/Vertex3D.zig");
 const Window = @import("Window.zig");
 const UBO = @import("UniformBufferObject.zig");
 // Math
@@ -14,7 +15,8 @@ const M4 = Matrix(f32, 4);
 const persp = @import("Math/Mat.zig").persp2;
 // Model
 // const Tri = @import("Models/Triangle.zig");
-const Rect = @import("Models/Rectangle.zig");
+// const Rect = @import("Models/Rectangle.zig");
+const Cube = @import("Models/Cube.zig");
 // Vulkan
 const vk = @import("../../vulkan/vulkan.zig");
 // Zstbi
@@ -47,6 +49,10 @@ pipeline_layout: vk.PipelineLayout = .null,
 pipeline: vk.Pipeline = .null,
 // commands
 command_pool: vk.CommandPool = .null,
+// depth
+depth_image: vk.Image = .null,
+depth_image_memory: vk.DeviceMemory = .null,
+depth_image_view: vk.ImageView = .null,
 // textures
 texture_image: vk.Image = .null,
 texture_image_memory: vk.DeviceMemory = .null,
@@ -78,8 +84,9 @@ framebuffer_resized: bool = false,
 start: i128 = 0,
 current: i128 = 0,
 // models = auto-loaded for now
-vertices: [4]Vertex = Rect.vertices, // Tri.vertices,
-indices: [6]u16 = Rect.indices, // Tri.indices,
+vertices: [4]Vertex3D = Cube.vertices,
+// vertices: [4]Vertex2D = Rect.vertices,
+indices: [6]u16 = Cube.indices,
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -122,12 +129,18 @@ pub fn init(
     // command pool
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
-    // buffers
+    // buffers: Depth, Texture, Vertex, Index, Uniform
+    // depth
+    self.depth_image = try self.createDepthResources();
+    // texture
     try self.createTextureImage(allo); // need to split
     self.texture_image_view = try self.createTextureImageView();
     self.texture_sampler = try self.createTextureSampler();
+    // vertex
     try self.createVertexBuffer(&self.vertices); // need to split
+    // index
     try self.createIndexBuffer(&self.indices); // need to split
+    // uniform
     try self.createUniformBuffers(); // need to split
     // descriptor pool
     self.descriptor_pool = try self.createDescriptorPool();
@@ -846,6 +859,17 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 }
 
+fn createDepthResources(self: *const Engine) !void {
+    _ = self;
+}
+
+fn hasStencilComponent(format: vk.Format) bool {
+    return switch (format) {
+        .d32_sfloat_s8_uint, .d24_unorm_s8_uint => true,
+        else => false,
+    };
+}
+
 fn createTextureImage(self: *Engine, allo: std.mem.Allocator) !void {
     // init img loader
     zstbi.init(allo);
@@ -1509,18 +1533,20 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     // create ubo
     // model
     const eye = M4.eye();
+    // const dos = eye.mulS(2);
     const angle = std.math.degreesToRadians(90.0) * delta_time;
     const z_axis = V3.new([_]f32{ 0, 0, 1 });
-    const model: M4 = eye.rotate(angle, z_axis).mulS(2);
+    const model: M4 = eye.rotate(angle, z_axis);
     // view
     const axis2 = V3.init(2);
     const axis3: V3 = .init(0);
     const view: M4 = axis2.lookAt(axis3, z_axis);
     // proj
+    // std.debug.print("Aspect Ratio: {}\n", .{self.aspect()});
     const proj: M4 = persp(
         f32,
         std.math.degreesToRadians(45.0),
-        self.aspect(),
+        self.aspect(), // changes with window
         0.1,
         10.0,
     );

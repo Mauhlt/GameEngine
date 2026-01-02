@@ -1,11 +1,35 @@
 # Game Engine:
 Experimental Engine
 
+# Key Features:
+- create cube
+- shade cube
+- add physics to cube
+- load models from blender
+- place models
+- ability to create a track from bezier curves
+- ability to train a custom reinforcement learning algorithm
+- ability to implement physics
+
+
 # To Do:
-- implement flexible code that changes based on data
 - implement image loader 
-- experiment with different image compressions = want fast as possible + smaller size
-- implement custom shader compilation into zig
+    - try out different formats 
+    - implement used formats 
+    - goal is speed = fast to load, read, process
+- implement data/image compression
+- implement shader graph
+    - instead of coding glsl, create nodes
+- implement engines:
+    - graphics engine 
+        - flexible based on data
+        - previous pipeline config
+    - narration/quest engine
+        - node based quest creation
+        - needs website = anyone anywhere can send + recv data
+    - visual/shader engine
+        - node based shader creation
+    - forge engine
 
 # Builds
 ## Windows:
