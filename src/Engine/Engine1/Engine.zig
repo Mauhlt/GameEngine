@@ -71,9 +71,10 @@ command_buffers: [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer = [_]vk.CommandBuffer{.n
 image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore = [_]vk.Semaphore{.null} ** MAX_FRAMES_IN_FLIGHT,
 in_flight_fences: [MAX_FRAMES_IN_FLIGHT]vk.Fence = [_]vk.Fence{.null} ** MAX_FRAMES_IN_FLIGHT,
-// flags
+// misc
 current_frame: u32 = 0,
 framebuffer_resized: bool = false,
+// time
 start: i128 = 0,
 current: i128 = 0,
 // models = auto-loaded for now
@@ -859,12 +860,14 @@ fn createTextureImage(self: *Engine, allo: std.mem.Allocator) !void {
     });
     defer allo.free(fullpath);
     // load img + props
-    var img = try zstbi.Image.loadFromFile("./textures/texture.jpg", 0);
+    var img = try zstbi.Image.loadFromFile("./textures/texture.jpg", 4);
     defer img.deinit();
+    // std.debug.print("Img: {}\n", .{img.data.len});
+    if (img.data.len == 0) return error.FailedToLoadTextureImg;
+    // std.debug.print("Image: {}-{}-{}\n", .{ img.width, img.height, img.num_components });
     // data, width, height, num_components, bytes per component, bytes per row, is hdr
     // check if successful
-    const image_size: vk.DeviceSize = img.width * img.height * 4;
-    if (img.data.len == 0) return error.FailedToLoadTextureImg;
+    const image_size: vk.DeviceSize = img.width * img.height * 4; // should this be 4?
     // create staging
     var staging_buffer: vk.Buffer = .null;
     var staging_buffer_memory: vk.DeviceMemory = .null;
@@ -892,8 +895,8 @@ fn createTextureImage(self: *Engine, allo: std.mem.Allocator) !void {
             .success => {},
             else => error.FailedToMapMemory,
         };
-        var gpu_vertices: [*]u8 = @ptrCast(@alignCast(gpu_ptr));
-        @memcpy(gpu_vertices[0..img.data.len], img.data);
+        var gpu_image: [*]u8 = @ptrCast(@alignCast(gpu_ptr));
+        @memcpy(gpu_image[0..img.data.len], img.data);
         vk.unmapMemory(self.device, staging_buffer_memory);
     }
     try self.createImage(
@@ -950,8 +953,8 @@ fn createImage(
         .tiling = tiling,
         .initial_layout = .undefined,
         .usage = usage,
-        .sharing_mode = .exclusive,
         .samples = .@"1_bit",
+        .sharing_mode = .exclusive,
     };
 
     // var texture: vk.Image = .null;
@@ -977,6 +980,59 @@ fn createImage(
         .success => {},
         else => error.FailedToBindImageMemory,
     };
+}
+
+fn transitionImageLayout(
+    self: *const Engine,
+    image: vk.Image,
+    format: vk.Format,
+    old_layout: vk.ImageLayout,
+    new_layout: vk.ImageLayout,
+) !void {
+    _ = format;
+    const command_buffer = try self.beginSingleTimeCommands();
+    var barrier = vk.ImageMemoryBarrier{
+        .old_layout = old_layout,
+        .new_layout = new_layout,
+        .src_queue_family_index = vk.QueueFamilyIgnored, // .queue_family_ignored,
+        .dst_queue_family_index = vk.QueueFamilyIgnored, // .queue_family_ignored,
+        .image = image,
+        .subresource_range = .{
+            .aspect_mask = .init(.color_bit),
+            .base_mip_level = 0,
+            .level_count = 1,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        },
+    };
+    var src_stage: vk.PipelineStageFlags = .initEmpty();
+    var dst_stage: vk.PipelineStageFlags = .initEmpty();
+    if (old_layout == .undefined and new_layout == .transfer_dst_optimal) {
+        barrier.src_access_mask = .initEmpty();
+        barrier.dst_access_mask = .init(.transfer_write_bit);
+        src_stage = .init(.top_of_pipe_bit);
+        dst_stage = .init(.transfer_bit);
+    } else if (old_layout == .transfer_dst_optimal and new_layout == .shader_read_only_optimal) {
+        barrier.src_access_mask = .init(.transfer_write_bit);
+        barrier.dst_access_mask = .init(.shader_read_bit);
+        src_stage = .init(.transfer_bit);
+        dst_stage = .init(.fragment_shader_bit);
+    } else {
+        return error.UnsupportedLayoutTransition;
+    }
+    vk.cmdPipelineBarrier(
+        command_buffer,
+        src_stage,
+        dst_stage,
+        .initEmpty(),
+        0,
+        null,
+        0,
+        null,
+        1,
+        &barrier,
+    );
+    try self.endSingleTimeCommands(command_buffer);
 }
 
 fn copyBufferToImage(
@@ -1032,9 +1088,9 @@ fn createImageView(
             .layer_count = 1,
         },
     };
-    var view: vk.ImageView = .null;
-    return switch (vk.createImageView(self.device, &create_info, null, &view)) {
-        .success => view,
+    var image_view: vk.ImageView = .null;
+    return switch (vk.createImageView(self.device, &create_info, null, &image_view)) {
+        .success => image_view,
         else => error.FailedToCreateTextureImageView,
     };
 }
@@ -1056,13 +1112,13 @@ fn createTextureSampler(self: *const Engine) !vk.Sampler {
         .compare_enable = .false,
         .compare_op = .always,
         .mip_map_mode = .linear,
-        .mip_lod_bias = 0.0,
-        .min_lod = 0.0,
-        .max_lod = 0.0,
+        // .mip_lod_bias = 0.0,
+        // .min_lod = 0.0,
+        // .max_lod = 0.0,
     };
-    var sampler: vk.Sampler = .null;
-    return switch (vk.createSampler(self.device, &create_info, null, &sampler)) {
-        .success => sampler,
+    var texture_sampler: vk.Sampler = .null;
+    return switch (vk.createSampler(self.device, &create_info, null, &texture_sampler)) {
+        .success => texture_sampler,
         else => error.FailedToCreateTextureSampler,
     };
 }
@@ -1569,55 +1625,4 @@ fn aspect(self: *const Engine) f32 {
     const width: f32 = @floatFromInt(self.swapchain_extent.width);
     const height: f32 = @floatFromInt(self.swapchain_extent.height);
     return width / height;
-}
-
-fn transitionImageLayout(
-    self: *const Engine,
-    image: vk.Image,
-    format: vk.Format,
-    old_layout: vk.ImageLayout,
-    new_layout: vk.ImageLayout,
-) !void {
-    _ = format;
-    const command_buffer = try self.beginSingleTimeCommands();
-    var barrier = vk.ImageMemoryBarrier{
-        .old_layout = old_layout,
-        .new_layout = new_layout,
-        .src_queue_family_index = vk.QueueFamilyIgnored, // .queue_family_ignored,
-        .dst_queue_family_index = vk.QueueFamilyIgnored, // .queue_family_ignored,
-        .image = image,
-        .subresource_range = .{
-            .aspect_mask = .init(.color_bit),
-            .base_mip_level = 0,
-            .level_count = 1,
-            .base_array_layer = 0,
-            .layer_count = 1,
-        },
-    };
-    var src_stage: vk.PipelineStageFlags = .initEmpty();
-    var dst_stage: vk.PipelineStageFlags = .initEmpty();
-    if (old_layout == .undefined and new_layout == .transfer_dst_optimal) {
-        barrier.src_access_mask = .initEmpty();
-        barrier.dst_access_mask = .init(.transfer_write_bit);
-        src_stage = .init(.top_of_pipe_bit);
-        dst_stage = .init(.transfer_bit);
-    } else if (old_layout == .transfer_dst_optimal and new_layout == .shader_read_only_optimal) {
-        src_stage = .init(.transfer_bit);
-        dst_stage = .init(.fragment_shader_bit);
-    } else {
-        return error.UnsupportedLayoutTransition;
-    }
-    vk.cmdPipelineBarrier(
-        command_buffer,
-        src_stage,
-        dst_stage,
-        .initEmpty(),
-        0,
-        null,
-        0,
-        null,
-        1,
-        &barrier,
-    );
-    try self.endSingleTimeCommands(command_buffer);
 }

@@ -1,7 +1,6 @@
 const std = @import("std");
 const Engine = @import("Engine/Engine1/Engine.zig");
-// const Mat = @import("Engine/Engine1/Math/Mat.zig");
-// const Engine = @import("Engine/Engine2/Engine.zig");
+const Server = @import("Engine/Engine1/Server/main.zig");
 
 pub fn main() !void {
     // Allocator
@@ -20,6 +19,9 @@ pub fn main() !void {
     );
     defer engine.deinit(allo);
     try engine.run();
+
+    // testing server
+    // try Server.main();
 }
 
 test "_" {
