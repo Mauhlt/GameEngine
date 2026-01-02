@@ -1008,13 +1008,17 @@ fn transitionImageLayout(
     var src_stage: vk.PipelineStageFlags = .initEmpty();
     var dst_stage: vk.PipelineStageFlags = .initEmpty();
     if (old_layout == .undefined and new_layout == .transfer_dst_optimal) {
+        // barrier
         barrier.src_access_mask = .initEmpty();
         barrier.dst_access_mask = .init(.transfer_write_bit);
+        // stages
         src_stage = .init(.top_of_pipe_bit);
         dst_stage = .init(.transfer_bit);
     } else if (old_layout == .transfer_dst_optimal and new_layout == .shader_read_only_optimal) {
+        // barrier
         barrier.src_access_mask = .init(.transfer_write_bit);
         barrier.dst_access_mask = .init(.shader_read_bit);
+        // stages
         src_stage = .init(.transfer_bit);
         dst_stage = .init(.fragment_shader_bit);
     } else {
