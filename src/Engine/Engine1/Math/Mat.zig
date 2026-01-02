@@ -31,19 +31,19 @@ pub fn Matrix(comptime T: type, comptime N: comptime_int) type {
 
         // scalar
         pub fn addS(self: @This(), scalar: T) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) + @as(@Vector(N * N, T), @splat(scalar))) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), @bitCast(self.data)) + @as(@Vector(N * N, T), @splat(scalar))) };
         }
 
         pub fn subS(self: @This(), scalar: T) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) - @as(@Vector(N * N, T), @splat(scalar))) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), @bitCast(self.data)) - @as(@Vector(N * N, T), @splat(scalar))) };
         }
 
         pub fn mulS(self: @This(), scalar: T) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) * @as(@Vector(N * N, T), @splat(scalar))) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), @bitCast(self.data)) * @as(@Vector(N * N, T), @splat(scalar))) };
         }
 
         pub fn divS(self: @This(), scalar: T) @TypeOf(self) {
-            return .{ .data = @bitCast(@as(@Vector(N * N, T), self.data) / @as(@Vector(N * N, T), @splat(scalar))) };
+            return .{ .data = @bitCast(@as(@Vector(N * N, T), @bitCast(self.data)) / @as(@Vector(N * N, T), @splat(scalar))) };
         }
 
         pub fn addV(self: @This(), other: Vector(T, N)) @TypeOf(self) {

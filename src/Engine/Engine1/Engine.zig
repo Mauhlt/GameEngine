@@ -1511,7 +1511,7 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     const eye = M4.eye();
     const angle = std.math.degreesToRadians(90.0) * delta_time;
     const z_axis = V3.new([_]f32{ 0, 0, 1 });
-    const model: M4 = eye.rotate(angle, z_axis);
+    const model: M4 = eye.rotate(angle, z_axis).mulS(2);
     // view
     const axis2 = V3.init(2);
     const axis3: V3 = .init(0);
