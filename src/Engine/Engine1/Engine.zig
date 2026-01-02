@@ -191,7 +191,7 @@ pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
 pub fn run(self: *Engine) !void {
     while (!self.window.shouldClose()) {
         try self.drawFrame();
-        self.window.poll(); // currently blocking - need non-blocking i/o
+        self.window.poll(); // blocking i/o
     }
     try switch (vk.deviceWaitIdle(self.device)) {
         .success => {},
