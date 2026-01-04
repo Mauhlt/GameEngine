@@ -131,7 +131,7 @@ pub fn init(
     try self.allocCommandBuffers();
     // buffers: Depth, Texture, Vertex, Index, Uniform
     // depth
-    self.depth_image = try self.createDepthResources();
+    // self.depth_image = try self.createDepthResources();
     // texture
     try self.createTextureImage(allo); // need to split
     self.texture_image_view = try self.createTextureImageView();
@@ -484,9 +484,15 @@ fn recreateSwapchain(self: *Engine) !void {
         self.swapchain_image_views[i] = try self.createSwapchainImageView(i);
         self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
     }
+    // create depth resources here
 }
 
 fn destroySwapchain(self: *Engine) void {
+    // depth
+    vk.destroyImageView(self.device, self.depth_image_view, null);
+    vk.destroyImage(self.device, null);
+    vk.freeMemory(self.device, self.depth_image_memory, null);
+    // swapchain
     for (0..self.swapchain_n_images) |i| {
         vk.destroyFramebuffer(self.device, self.swapchain_framebuffers[i], null);
         vk.destroyImageView(self.device, self.swapchain_image_views[i], null);
@@ -860,7 +866,40 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
 }
 
 fn createDepthResources(self: *const Engine) !void {
-    _ = self;
+    const depth_format = try self.findDepthFormat();
+}
+
+fn findSupportedFormat(
+    self: *const Engine,
+    candidates: []const vk.Format,
+    tiling: vk.ImageTilingFlags,
+    features: vk.FormatFeatureFlags,
+) !vk.Format {
+    for (candidates) |candidate| {
+        var props: vk.FromatProperties = undefined;
+        vk.getPhysicalDeviceFormatProperties(self.physical_device, format, &props);
+
+        if (tiling.contains(.linear) and props.linear_tiling_features.contains()) {
+            return format;
+        }
+    }
+
+    return error.FailedToFindSupportedFormat;
+}
+
+fn findDepthFormat() vk.Format {
+    return findSupportedFormat(
+        &.{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint },
+        .init(.optimal),
+        .attachment_bit,
+    );
+}
+
+fn hasStencilComponent(format: vk.Format) bool {
+    return switch (format) {
+        .d32_sfloat_s8_uint, .d24_unorm_s8_uint => true,
+        else => false,
+    };
 }
 
 fn hasStencilComponent(format: vk.Format) bool {

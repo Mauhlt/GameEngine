@@ -1,0 +1,17 @@
+# Python Sockets
+- neural nine has a lot of nice projects
+- server and client files
+- sockets = connections
+- Family of Sockets  
+    - internet socket
+    - infrared socket
+    - bluetooth socket
+- Type Of Socket:
+    - connection oriented = tcp
+    - connectionless = udp
+- bind server
+    - server bind ip addr
+        - find internal ip
+        - use external ip
+        - use 0.0.0.0
+        - use 127.0.0.1:
