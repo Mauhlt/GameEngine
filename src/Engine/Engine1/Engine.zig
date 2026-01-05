@@ -865,41 +865,51 @@ fn allocCommandBuffer(self: *const Engine) !vk.CommandBuffer {
     };
 }
 
-fn createDepthResources(self: *const Engine) !void {
+fn createDepthResources(self: *Engine) !void {
     const depth_format = try self.findDepthFormat();
+    try self.createImage(
+        self.swapchain_extent.width,
+        self.swapchain_extent.height,
+        depth_format,
+        .init(.optimal),
+        .init(.detpth_stencil_attachment_bit),
+        .init(.device_local_bit),
+        &self.depth_image,
+        &self.depth_image_memory,
+    );
+    self.depth_image_view = try self.createImageView(self.depth_image, depth_format);
 }
 
 fn findSupportedFormat(
     self: *const Engine,
     candidates: []const vk.Format,
     tiling: vk.ImageTilingFlags,
-    features: vk.FormatFeatureFlags,
+    feats: vk.FormatFeatureFlags,
 ) !vk.Format {
     for (candidates) |candidate| {
-        var props: vk.FromatProperties = undefined;
-        vk.getPhysicalDeviceFormatProperties(self.physical_device, format, &props);
+        var props: vk.FormatProperties = undefined;
+        vk.getPhysicalDeviceFormatProperties(self.physical_device, candidate, &props);
 
-        if (tiling.contains(.linear) and props.linear_tiling_features.contains()) {
-            return format;
+        if (tiling.contains(.linear) and
+            props.linear_tiling_features.contains(feats))
+        {
+            return candidate;
+        } else if (tiling.contains(.optimal) and
+            props.optimal_tiling_features.contains(feats))
+        {
+            return candidate;
         }
     }
 
     return error.FailedToFindSupportedFormat;
 }
 
-fn findDepthFormat() vk.Format {
-    return findSupportedFormat(
+inline fn findDepthFormat(self: *const Engine) !vk.Format {
+    return self.findSupportedFormat(
         &.{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint },
         .init(.optimal),
         .attachment_bit,
     );
-}
-
-fn hasStencilComponent(format: vk.Format) bool {
-    return switch (format) {
-        .d32_sfloat_s8_uint, .d24_unorm_s8_uint => true,
-        else => false,
-    };
 }
 
 fn hasStencilComponent(format: vk.Format) bool {
