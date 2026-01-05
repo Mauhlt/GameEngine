@@ -915,20 +915,38 @@ fn findSupportedFormat(
     self: *const Engine,
     candidates: []const vk.Format,
     tiling: vk.ImageTilingFlags,
-    feats: vk.FormatFeatureFlags,
+    feature: vk.FormatFeatureFlags,
 ) !vk.Format {
+    std.debug.print("Tiling: {b}\n", .{tiling.bits});
+    inline for (comptime std.meta.fieldNames(vk.ImageTilingFlagBits)) |field_name| {
+        std.debug.print("Tiling: {} - {}\n", .{
+            tiling.contains(@field(vk.ImageTilingFlagBits, field_name)),
+            @field(vk.ImageTilingFlagBits, field_name),
+        });
+    }
+
     for (candidates) |candidate| {
         var props: vk.FormatProperties = undefined;
         vk.getPhysicalDeviceFormatProperties(self.physical_device, candidate, &props);
+        // vk.ImageTilingFlagBits.optimal
+
+        // std.debug.print("Match 0: {} - {}\n", .{
+        //     tiling.contains(.linear),
+        //     tiling.contains(.optimal),
+        // });
+        // std.debug.print("Match 1: {} - {}\n", .{
+        //     props.linear_tiling_features.supersetOf(feature),
+        //     props.optimal_tiling_features.supersetOf(feature),
+        // });
 
         if (tiling.contains(.linear) and
-            props.linear_tiling_features.supersetOf(feats))
-        // ((props.linear_tiling_features.bits & feats.bits) == feats.bits))
+            props.linear_tiling_features.supersetOf(feature))
         {
             return candidate;
-        } else if (tiling.contains(.optimal) and
-            props.optimal_tiling_features.supersetOf(feats))
-        // ((props.optimal_tiling_features.bits & feats.bits) == feats.bits))
+        }
+
+        if (tiling.contains(.optimal) and
+            props.optimal_tiling_features.supersetOf(feature))
         {
             return candidate;
         }
@@ -938,10 +956,19 @@ fn findSupportedFormat(
 }
 
 fn findDepthFormat(self: *const Engine) !vk.Format {
+    const image_tiling: vk.ImageTilingFlags = .init(.optimal);
+    // std.debug.print("Tiling: {}\n", .{@intFromEnum(vk.ImageTilingFlagBits.optimal)});
+    std.debug.print("Tiling: {b} {b} {}\n", .{
+        image_tiling.bits,
+        @as(u32, @intFromEnum(vk.ImageTilingFlagBits.optimal)),
+        (@as(u32, 0) & @as(u32, 0)) == @as(u32, 0),
+    });
+
+    const feature: vk.FormatFeatureFlags = .init(.depth_stencil_attachment_bit);
     return self.findSupportedFormat(
         &.{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint },
-        .init(.optimal),
-        .init(.depth_stencil_attachment_bit),
+        image_tiling,
+        feature,
     );
 }
 

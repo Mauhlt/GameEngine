@@ -33,8 +33,8 @@
     // internet connectivity.
     .dependencies = .{
         .PackedEnumSet = .{
-            .url = "git+https://github.com/Mauhlt/PackedEnumSet#65087c8f3d6f961888b52f395c15e4baaaefdd07",
-            .hash = "PackedEnumSet-0.0.0-oZSdHqEXAABMzt3RMe8DZ9ZrHqEI20fvtiT-AN5PGR-j",
+            .url = "git+https://github.com/Mauhlt/PackedEnumSet#7043a8e6386f036dc05f5cdc526a03e2d3c3f920",
+            .hash = "PackedEnumSet-0.0.0-oZSdHjslAACzZxS1jRt99QmoD-giXoXLaS8yzX0cBxoG",
         },
         .zstbi = .{
             .url = "git+https://github.com/zig-gamedev/zstbi#664305dd52640be15cbebd7cd73d1199679933e1",
