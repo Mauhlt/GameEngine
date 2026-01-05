@@ -120,8 +120,6 @@ pub fn init(
     for (0..self.swapchain_n_images) |i|
         self.swapchain_image_views[i] = try self.createSwapchainImageView(i);
     self.render_pass = try self.createRenderPass();
-    for (0..self.swapchain_n_images) |i|
-        self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
     // pipeline
     self.descriptor_set_layout = try self.createDescriptorSetLayout();
     self.pipeline_layout = try self.createPipelineLayout();
@@ -129,9 +127,12 @@ pub fn init(
     // command pool
     self.command_pool = try self.createCommandPool();
     try self.allocCommandBuffers();
-    // buffers: Depth, Texture, Vertex, Index, Uniform
+    // buffers: Depth, Framebuffer, Texture, Vertex, Index, Uniform
     // depth
     try self.createDepthResources();
+    // framebuffer
+    for (0..self.swapchain_n_images) |i|
+        self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
     // texture
     try self.createTextureImage(allo); // need to split
     self.texture_image_view = try self.createTextureImageView();
@@ -553,8 +554,8 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
         .store_op = .dont_care,
         .stencil_load_op = .dont_care,
         .stencil_store_op = .dont_care,
-        .inital_layout = .undefined,
-        .final_layout = .depth_stencil_attachment_bit,
+        .initial_layout = .undefined,
+        .final_layout = .depth_stencil_attachment_optimal,
     };
 
     const color_attachment_ref = vk.AttachmentReference{
@@ -563,39 +564,43 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
     };
 
     const depth_attachment_ref = vk.AttachmentReference{
-        .attacment = 1,
+        .attachment = 1,
         .layout = .depth_stencil_attachment_optimal,
     };
 
-    const subpass = vk.SubpassDescription{
-        .pipeline_bind_point = .graphics,
-        .color_attachment_count = 1,
-        .p_color_attachments = @ptrCast(&color_attachment_ref),
-        .p_depth_stencil_attachment = @ptrCast(&depth_attachment_ref),
+    const subpass = [_]vk.SubpassDescription{
+        .{
+            .pipeline_bind_point = .graphics,
+            .color_attachment_count = 1,
+            .p_color_attachments = @ptrCast(&color_attachment_ref),
+            .p_depth_stencil_attachment = @ptrCast(&depth_attachment_ref),
+        },
     };
 
-    const dependencies = vk.SubpassDependency{
-        .src_subpass = vk.SubpassExternal,
-        .dst_subpass = 0,
-        .src_stage_mask = .initMany(&.{
-            .color_attachment_output_bit,
-            .late_fragment_tests,
-        }),
-        .src_access_mask = .initMany(&.{
-            .color_attachment_output_bit,
-            .early_fragment_tests_bit,
-        }),
-        .dst_stage_mask = .initMany(&.{
-            .color_attachment_output_bit,
-            .early_fragment_tests_bit,
-        }),
-        .dst_access_mask = .initMany(&.{
-            .color_attachment_write_bit,
-            .depth_stencil_attachment_write_bit,
-        }),
+    const dependencies = [_]vk.SubpassDependency{
+        .{
+            .src_subpass = vk.SubpassExternal,
+            .dst_subpass = 0,
+            .src_stage_mask = .initMany(&.{
+                .color_attachment_output_bit,
+                .late_fragment_tests_bit,
+            }),
+            .src_access_mask = .init(.depth_stencil_attachment_write_bit),
+            .dst_stage_mask = .initMany(&.{
+                .color_attachment_output_bit,
+                .early_fragment_tests_bit,
+            }),
+            .dst_access_mask = .initMany(&.{
+                .color_attachment_write_bit,
+                .depth_stencil_attachment_write_bit,
+            }),
+        },
     };
 
-    const attachments = [_]vk.AttachmentDescription{ color_attachment, depth_attachment };
+    const attachments = [_]vk.AttachmentDescription{
+        color_attachment,
+        depth_attachment,
+    };
 
     const create_info = vk.RenderPassCreateInfo{
         .attachment_count = @truncate(attachments.len),
@@ -614,7 +619,10 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
 }
 
 fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
-    const attachments = [_]vk.ImageView{self.swapchain_image_views[i]};
+    const attachments = [_]vk.ImageView{
+        self.swapchain_image_views[i],
+        self.depth_image_view,
+    };
 
     const create_info = vk.FramebufferCreateInfo{
         .render_pass = self.render_pass,
