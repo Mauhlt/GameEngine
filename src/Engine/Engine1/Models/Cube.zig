@@ -1,4 +1,4 @@
-const Vertex = @import("../Vertex3D.zig");
+const Vertex = @import("../Vertex/Vertex3D.zig");
 
 pub const vertices = [_]Vertex{
     .{ .pos = [_]f32{ -0.5, -0.5, 0 }, .color = [_]f32{ 1, 0, 0 }, .tex_coord = .{ 1, 0 } },

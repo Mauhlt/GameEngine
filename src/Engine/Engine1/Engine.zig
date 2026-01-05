@@ -84,9 +84,9 @@ framebuffer_resized: bool = false,
 start: i128 = 0,
 current: i128 = 0,
 // models = auto-loaded for now
-vertices: [4]Vertex3D = Cube.vertices,
+vertices: @TypeOf(Cube.vertices) = Cube.vertices,
 // vertices: [4]Vertex2D = Rect.vertices,
-indices: [6]u16 = Cube.indices,
+indices: @TypeOf(Cube.indices) = Cube.indices,
 
 pub fn init(
     allo: std.mem.Allocator,
@@ -131,7 +131,7 @@ pub fn init(
     try self.allocCommandBuffers();
     // buffers: Depth, Texture, Vertex, Index, Uniform
     // depth
-    // self.depth_image = try self.createDepthResources();
+    try self.createDepthResources();
     // texture
     try self.createTextureImage(allo); // need to split
     self.texture_image_view = try self.createTextureImageView();
@@ -490,7 +490,7 @@ fn recreateSwapchain(self: *Engine) !void {
 fn destroySwapchain(self: *Engine) void {
     // depth
     vk.destroyImageView(self.device, self.depth_image_view, null);
-    vk.destroyImage(self.device, null);
+    vk.destroyImage(self.device, self.depth_image, null);
     vk.freeMemory(self.device, self.depth_image_memory, null);
     // swapchain
     for (0..self.swapchain_n_images) |i| {
@@ -535,52 +535,63 @@ fn createSwapchainImageView(self: *const Engine, i: usize) !vk.ImageView {
 }
 
 fn createRenderPass(self: *const Engine) !vk.RenderPass {
-    const color_attachment = [_]vk.AttachmentDescription{
-        .{
-            .format = self.swapchain_format,
-            .samples = .@"1_bit",
-            .load_op = .clear,
-            .store_op = .store,
-            .stencil_load_op = .dont_care,
-            .stencil_store_op = .dont_care,
-            .initial_layout = .undefined,
-            .final_layout = .present_src_khr,
-        },
+    const color_attachment = vk.AttachmentDescription{
+        .format = self.swapchain_format,
+        .samples = .@"1_bit",
+        .load_op = .clear,
+        .store_op = .store,
+        .stencil_load_op = .dont_care,
+        .stencil_store_op = .dont_care,
+        .initial_layout = .undefined,
+        .final_layout = .present_src_khr,
     };
 
-    const color_attachment_ref = [_]vk.AttachmentReference{
-        .{
-            .attachment = 0,
-            .layout = .attachment_optimal,
-        },
+    const depth_attachment = vk.AttachmentDescription{
+        .format = try self.findDepthFormat(),
+        .samples = .@"1_bit",
+        .load_op = .clear,
+        .store_op = .dont_care,
+        .stencil_load_op = .dont_care,
+        .stencil_store_op = .dont_care,
+        .inital_layout = .undefined,
+        .final_layout = .depth_stencil_attachment_bit,
     };
 
-    const subpass = [_]vk.SubpassDescription{
-        .{
-            .pipeline_bind_point = .graphics,
-            .color_attachment_count = @truncate(color_attachment_ref.len),
-            .p_color_attachments = &color_attachment_ref,
-        },
+    const color_attachment_ref = vk.AttachmentReference{
+        .attachment = 0,
+        .layout = .attachment_optimal,
     };
 
-    const dependencies = [_]vk.SubpassDependency{
-        .{
-            .src_subpass = vk.SubpassExternal,
-            .dst_subpass = 0,
-            .src_stage_mask = .init(.color_attachment_output_bit),
-            .src_access_mask = .initEmpty(),
-            .dst_stage_mask = .init(.color_attachment_output_bit),
-            .dst_access_mask = .init(.color_attachment_write_bit),
-        },
+    const depth_attachment_ref = vk.AttachmentReference{
+        .attacment = 1,
+        .layout = .depth_stencil_attachment_optimal,
     };
+
+    const subpass = vk.SubpassDescription{
+        .pipeline_bind_point = .graphics,
+        .color_attachment_count = 1,
+        .p_color_attachments = @ptrCast(&color_attachment_ref),
+        .p_depth_stencil_attachment = @ptrCast(&depth_attachment_ref),
+    };
+
+    const dependencies = vk.SubpassDependency{
+        .src_subpass = vk.SubpassExternal,
+        .dst_subpass = 0,
+        .src_stage_mask = .init(.color_attachment_output_bit),
+        .src_access_mask = .initEmpty(),
+        .dst_stage_mask = .init(.color_attachment_output_bit),
+        .dst_access_mask = .init(.color_attachment_write_bit),
+    };
+
+    const attachments = [_]vk.AttachmentDescription{ color_attachment, depth_attachment };
 
     const create_info = vk.RenderPassCreateInfo{
-        .attachment_count = @truncate(color_attachment.len),
-        .p_attachments = &color_attachment,
-        .dependency_count = @truncate(dependencies.len),
-        .p_dependencies = &dependencies,
+        .attachment_count = @truncate(attachments.len),
+        .p_attachments = &attachments,
         .subpass_count = @truncate(subpass.len),
         .p_subpasses = &subpass,
+        .dependency_count = @truncate(dependencies.len),
+        .p_dependencies = &dependencies,
     };
 
     var render_pass: vk.RenderPass = .null;
@@ -695,10 +706,10 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         fss_create_info,
     };
     var bind_descs: [1]vk.VertexInputBindingDescription = undefined;
-    Vertex.getBindingDescription(&bind_descs);
+    Vertex3D.getBindingDescription(&bind_descs);
     // inefficient to both declare undefined +
     var attr_descs: [3]vk.VertexInputAttributeDescription = undefined;
-    Vertex.getAttributeDescriptions(&attr_descs);
+    Vertex3D.getAttributeDescriptions(&attr_descs);
     const vis_create_info = vk.PipelineVertexInputStateCreateInfo{
         .vertex_binding_description_count = @truncate(bind_descs.len),
         .p_vertex_binding_descriptions = &bind_descs,
@@ -872,7 +883,7 @@ fn createDepthResources(self: *Engine) !void {
         self.swapchain_extent.height,
         depth_format,
         .init(.optimal),
-        .init(.detpth_stencil_attachment_bit),
+        .init(.depth_stencil_attachment_bit),
         .init(.device_local_bit),
         &self.depth_image,
         &self.depth_image_memory,
@@ -891,11 +902,13 @@ fn findSupportedFormat(
         vk.getPhysicalDeviceFormatProperties(self.physical_device, candidate, &props);
 
         if (tiling.contains(.linear) and
-            props.linear_tiling_features.contains(feats))
+            props.linear_tiling_features.supersetOf(feats))
+        // ((props.linear_tiling_features.bits & feats.bits) == feats.bits))
         {
             return candidate;
         } else if (tiling.contains(.optimal) and
-            props.optimal_tiling_features.contains(feats))
+            props.optimal_tiling_features.supersetOf(feats))
+        // ((props.optimal_tiling_features.bits & feats.bits) == feats.bits))
         {
             return candidate;
         }
@@ -904,11 +917,11 @@ fn findSupportedFormat(
     return error.FailedToFindSupportedFormat;
 }
 
-inline fn findDepthFormat(self: *const Engine) !vk.Format {
+fn findDepthFormat(self: *const Engine) !vk.Format {
     return self.findSupportedFormat(
         &.{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint },
         .init(.optimal),
-        .attachment_bit,
+        .init(.depth_stencil_attachment_bit),
     );
 }
 
@@ -1201,8 +1214,8 @@ fn copyBufferToImage(
     try self.endSingleTimeCommands(&command_buffer);
 }
 
-fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
-    const size = @sizeOf(Vertex) * data.len;
+fn createVertexBuffer(self: *Engine, data: []const Vertex3D) !void {
+    const size = @sizeOf(Vertex3D) * data.len;
 
     var staging_buffer: vk.Buffer = .null;
     var staging_buffer_memory: vk.DeviceMemory = .null;
@@ -1219,7 +1232,7 @@ fn createVertexBuffer(self: *Engine, data: []const Vertex) !void {
             .success => {},
             else => error.FailedToMapMemory,
         };
-        var gpu_vertices: [*]Vertex = @ptrCast(@alignCast(gpu_ptr));
+        var gpu_vertices: [*]Vertex3D = @ptrCast(@alignCast(gpu_ptr));
         @memcpy(gpu_vertices[0..data.len], data);
         vk.unmapMemory(self.device, staging_buffer_memory);
     }

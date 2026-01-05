@@ -1,4 +1,4 @@
-const vk = @import("../../vulkan/vulkan.zig");
+const vk = @import("../../../vulkan/vulkan.zig");
 const Vertex = @This();
 
 pos: [3]f32,
