@@ -577,10 +577,22 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
     const dependencies = vk.SubpassDependency{
         .src_subpass = vk.SubpassExternal,
         .dst_subpass = 0,
-        .src_stage_mask = .init(.color_attachment_output_bit),
-        .src_access_mask = .initEmpty(),
-        .dst_stage_mask = .init(.color_attachment_output_bit),
-        .dst_access_mask = .init(.color_attachment_write_bit),
+        .src_stage_mask = .initMany(&.{
+            .color_attachment_output_bit,
+            .late_fragment_tests,
+        }),
+        .src_access_mask = .initMany(&.{
+            .color_attachment_output_bit,
+            .early_fragment_tests_bit,
+        }),
+        .dst_stage_mask = .initMany(&.{
+            .color_attachment_output_bit,
+            .early_fragment_tests_bit,
+        }),
+        .dst_access_mask = .initMany(&.{
+            .color_attachment_write_bit,
+            .depth_stencil_attachment_write_bit,
+        }),
     };
 
     const attachments = [_]vk.AttachmentDescription{ color_attachment, depth_attachment };
