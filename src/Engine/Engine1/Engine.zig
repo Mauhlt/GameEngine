@@ -162,6 +162,7 @@ pub fn deinit(self: *Engine, allo: std.mem.Allocator) void {
     _ = allo;
     // swapchain
     self.destroySwapchain();
+    // depth
     // texture
     vk.destroySampler(self.device, self.texture_sampler, null);
     vk.destroyImageView(self.device, self.texture_image_view, null);
@@ -251,7 +252,7 @@ fn createInstance(ries: []const [*:0]const u8) !vk.Instance {
     if (!hasRequiredExtensions(ries, exts[0..n_exts]))
         return error.MissingRequiredInstanceExtensions;
 
-    const create_info = vk.InstanceCreateInfo{
+    const instance_state = vk.InstanceCreateInfo{
         .flags = switch (@import("builtin").os.tag) {
             .macos => .init(.enumerate_portability_bit_khr),
             else => .initEmpty(),
@@ -264,14 +265,14 @@ fn createInstance(ries: []const [*:0]const u8) !vk.Instance {
     };
 
     var instance: vk.Instance = .null;
-    return switch (vk.createInstance(&create_info, null, &instance)) {
+    return switch (vk.createInstance(&instance_state, null, &instance)) {
         .success => instance,
         else => error.FailedToCreateInstance,
     };
 }
 
 fn createSurface(self: *const Engine) !vk.SurfaceKHR {
-    const create_info = vk.Win32SurfaceCreateInfoKHR{
+    const surface_state = vk.Win32SurfaceCreateInfoKHR{
         .hinstance = self.window.instance,
         .hwnd = self.window.hwnd,
     };
@@ -279,7 +280,7 @@ fn createSurface(self: *const Engine) !vk.SurfaceKHR {
     var surface: vk.SurfaceKHR = .null;
     return switch (vk.createWin32SurfaceKHR(
         self.instance,
-        &create_info,
+        &surface_state,
         null,
         &surface,
     )) {
@@ -384,7 +385,7 @@ fn createLogicalDevice(self: *const Engine, rdes: []const [*:0]const u8) !vk.Dev
     };
     if (!hasRequiredExtensions(rdes, exts[0..n_exts]))
         return error.MissingRequiredDeviceExtensions;
-    const create_info = vk.DeviceCreateInfo{
+    const device_state = vk.DeviceCreateInfo{
         .flags = 0,
         .queue_create_info_count = if (qfi.isSameFamily()) 1 else @truncate(qcis.len),
         .p_queue_create_infos = &qcis,
@@ -395,7 +396,12 @@ fn createLogicalDevice(self: *const Engine, rdes: []const [*:0]const u8) !vk.Dev
         .pp_enabled_layer_names = null,
     };
     var device: vk.Device = .null;
-    return switch (vk.createDevice(self.physical_device, &create_info, null, &device)) {
+    return switch (vk.createDevice(
+        self.physical_device,
+        &device_state,
+        null,
+        &device,
+    )) {
         .success => device,
         else => error.FailedToCreateLogicalDevice,
     };
@@ -439,7 +445,7 @@ fn createSwapchain(self: *const Engine) !vk.SwapchainKHR {
     else
         ssd.capabilities.min_image_count + 1;
 
-    const create_info = vk.SwapchainCreateInfoKHR{
+    const swapchain_state = vk.SwapchainCreateInfoKHR{
         .surface = self.surface,
         .min_image_count = n_images,
         .image_format = surface_format.format,
@@ -458,7 +464,7 @@ fn createSwapchain(self: *const Engine) !vk.SwapchainKHR {
     };
 
     var swapchain: vk.SwapchainKHR = .null;
-    return switch (vk.createSwapchainKHR(self.device, &create_info, null, &swapchain)) {
+    return switch (vk.createSwapchainKHR(self.device, &swapchain_state, null, &swapchain)) {
         .success => swapchain,
         else => error.FailedToCreateSwapchain,
     };
@@ -485,7 +491,6 @@ fn recreateSwapchain(self: *Engine) !void {
         self.swapchain_image_views[i] = try self.createSwapchainImageView(i);
         self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
     }
-    // create depth resources here
 }
 
 fn destroySwapchain(self: *Engine) void {
@@ -602,7 +607,7 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
         depth_attachment,
     };
 
-    const create_info = vk.RenderPassCreateInfo{
+    const render_pass_state = vk.RenderPassCreateInfo{
         .attachment_count = @truncate(attachments.len),
         .p_attachments = &attachments,
         .subpass_count = @truncate(subpass.len),
@@ -612,7 +617,12 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
     };
 
     var render_pass: vk.RenderPass = .null;
-    return switch (vk.createRenderPass(self.device, &create_info, null, &render_pass)) {
+    return switch (vk.createRenderPass(
+        self.device,
+        &render_pass_state,
+        null,
+        &render_pass,
+    )) {
         .success => render_pass,
         else => error.FailedToCreateRenderPass,
     };
@@ -624,7 +634,7 @@ fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
         self.depth_image_view,
     };
 
-    const create_info = vk.FramebufferCreateInfo{
+    const framebuffer_state = vk.FramebufferCreateInfo{
         .render_pass = self.render_pass,
         .attachment_count = @truncate(attachments.len),
         .p_attachments = &attachments,
@@ -636,7 +646,7 @@ fn createSwapchainFramebuffer(self: *const Engine, i: usize) !vk.Framebuffer {
     var framebuffer: vk.Framebuffer = .null;
     return switch (vk.createFramebuffer(
         self.device,
-        &create_info,
+        &framebuffer_state,
         null,
         &framebuffer,
     )) {
@@ -664,14 +674,14 @@ fn createDescriptorSetLayout(self: *const Engine) !vk.DescriptorSetLayout {
         ubo_layout_binding,
         sampler_layout_binding,
     };
-    const create_info = vk.DescriptorSetLayoutCreateInfo{
+    const descriptor_set_state = vk.DescriptorSetLayoutCreateInfo{
         .binding_count = @truncate(bindings.len),
         .p_bindings = &bindings,
     };
     var descriptor_set_layout: vk.DescriptorSetLayout = .null;
     return switch (vk.createDescriptorSetLayout(
         self.device,
-        &create_info,
+        &descriptor_set_state,
         null,
         &descriptor_set_layout,
     )) {
@@ -681,7 +691,7 @@ fn createDescriptorSetLayout(self: *const Engine) !vk.DescriptorSetLayout {
 }
 
 fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
-    const create_info = vk.PipelineLayoutCreateInfo{
+    const pipeline_layout_state = vk.PipelineLayoutCreateInfo{
         .set_layout_count = 1,
         .p_set_layouts = &self.descriptor_set_layout,
         .push_constant_range_count = 0,
@@ -691,7 +701,7 @@ fn createPipelineLayout(self: *const Engine) !vk.PipelineLayout {
     var layout: vk.PipelineLayout = .null;
     return switch (vk.createPipelineLayout(
         self.device,
-        &create_info,
+        &pipeline_layout_state,
         null,
         &layout,
     )) {
@@ -865,12 +875,17 @@ fn isShader(name: []const u8) bool {
 }
 
 fn createShaderModule(self: *const Engine, code: []const u8) !vk.ShaderModule {
-    const create_info = vk.ShaderModuleCreateInfo{
+    const shader_module_state = vk.ShaderModuleCreateInfo{
         .code_size = @truncate(code.len),
         .p_code = @ptrCast(@alignCast(code)),
     };
     var shader_module: vk.ShaderModule = .null;
-    return switch (vk.createShaderModule(self.device, &create_info, null, &shader_module)) {
+    return switch (vk.createShaderModule(
+        self.device,
+        &shader_module_state,
+        null,
+        &shader_module,
+    )) {
         .success => shader_module,
         else => error.FailedToCreateShaderModule,
     };
@@ -878,13 +893,18 @@ fn createShaderModule(self: *const Engine, code: []const u8) !vk.ShaderModule {
 
 fn createCommandPool(self: *const Engine) !vk.CommandPool {
     const qfi = try QFI.init(self.surface, self.physical_device);
-    const create_info = vk.CommandPoolCreateInfo{
+    const command_pool_state = vk.CommandPoolCreateInfo{
         .queue_family_index = qfi.graphics_family.?,
         .flags = .initEmpty(),
     };
-    var pool: vk.CommandPool = .null;
-    return switch (vk.createCommandPool(self.device, &create_info, null, &pool)) {
-        .success => pool,
+    var command_pool: vk.CommandPool = .null;
+    return switch (vk.createCommandPool(
+        self.device,
+        &command_pool_state,
+        null,
+        &command_pool,
+    )) {
+        .success => command_pool,
         else => error.FailedToCreateCommandPool,
     };
 }
@@ -1049,7 +1069,7 @@ fn createTextureSampler(self: *const Engine) !vk.Sampler {
     var props: vk.PhysicalDeviceProperties = .{};
     vk.getPhysicalDeviceProperties(self.physical_device, &props);
     // instead of anisotropy on, can do anisotropyenable = false + max_anisotropy = 1.0
-    const create_info = vk.SamplerCreateInfo{
+    const sampler_state = vk.SamplerCreateInfo{
         .mag_filter = .linear,
         .min_filter = .linear,
         .address_mode_u = .repeat,
@@ -1067,7 +1087,12 @@ fn createTextureSampler(self: *const Engine) !vk.Sampler {
         // .max_lod = 0.0,
     };
     var texture_sampler: vk.Sampler = .null;
-    return switch (vk.createSampler(self.device, &create_info, null, &texture_sampler)) {
+    return switch (vk.createSampler(
+        self.device,
+        &sampler_state,
+        null,
+        &texture_sampler,
+    )) {
         .success => texture_sampler,
         else => error.FailedToCreateTextureSampler,
     };
@@ -1078,7 +1103,7 @@ fn createImageView(
     image: vk.Image,
     format: vk.Format,
 ) !vk.ImageView {
-    const create_info = vk.ImageViewCreateInfo{
+    const image_view_state = vk.ImageViewCreateInfo{
         .image = image,
         .view_type = .@"2d",
         .format = format,
@@ -1091,7 +1116,12 @@ fn createImageView(
         },
     };
     var image_view: vk.ImageView = .null;
-    return switch (vk.createImageView(self.device, &create_info, null, &image_view)) {
+    return switch (vk.createImageView(
+        self.device,
+        &image_view_state,
+        null,
+        &image_view,
+    )) {
         .success => image_view,
         else => error.FailedToCreateTextureImageView,
     };
@@ -1108,7 +1138,7 @@ fn createImage(
     image: *vk.Image,
     image_memory: *vk.DeviceMemory,
 ) !void {
-    const create_info = vk.ImageCreateInfo{
+    const image_state = vk.ImageCreateInfo{
         .image_type = .@"2d",
         .extent = .{
             .width = width,
@@ -1126,7 +1156,7 @@ fn createImage(
     };
 
     // var texture: vk.Image = .null;
-    try switch (vk.createImage(self.device, &create_info, null, image)) {
+    try switch (vk.createImage(self.device, &image_state, null, image)) {
         .success => {},
         else => error.FailedToCreateImage,
     };
@@ -1321,12 +1351,12 @@ fn createBuffer(
     buffer: *vk.Buffer,
     memory: *vk.DeviceMemory,
 ) !void {
-    const create_info = vk.BufferCreateInfo{
+    const buffer_state = vk.BufferCreateInfo{
         .size = size,
         .usage = usage,
         .sharing_mode = .exclusive,
     };
-    try switch (vk.createBuffer(self.device, &create_info, null, buffer)) {
+    try switch (vk.createBuffer(self.device, &buffer_state, null, buffer)) {
         .success => {},
         else => error.FailedToCreateBuffer,
     };
@@ -1447,13 +1477,18 @@ fn createDescriptorPool(self: *const Engine) !vk.DescriptorPool {
         .{ .type = .uniform_buffer, .descriptor_count = MAX_FRAMES_IN_FLIGHT },
         .{ .type = .combined_image_sampler, .descriptor_count = MAX_FRAMES_IN_FLIGHT },
     };
-    const create_info = vk.DescriptorPoolCreateInfo{
+    const descriptor_pool_state = vk.DescriptorPoolCreateInfo{
         .pool_size_count = @truncate(pool_sizes.len),
         .p_pool_sizes = &pool_sizes,
         .max_sets = MAX_FRAMES_IN_FLIGHT,
     };
     var descriptor_pool: vk.DescriptorPool = .null;
-    return switch (vk.createDescriptorPool(self.device, &create_info, null, &descriptor_pool)) {
+    return switch (vk.createDescriptorPool(
+        self.device,
+        &descriptor_pool_state,
+        null,
+        &descriptor_pool,
+    )) {
         .success => descriptor_pool,
         else => error.FailedToCreateDescriptorPool,
     };
@@ -1599,20 +1634,25 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
 }
 
 fn createSemaphore(self: *const Engine) !vk.Semaphore {
-    const create_info = vk.SemaphoreCreateInfo{};
+    const semaphore_state = vk.SemaphoreCreateInfo{};
     var semaphore: vk.Semaphore = .null;
-    return switch (vk.createSemaphore(self.device, &create_info, null, &semaphore)) {
+    return switch (vk.createSemaphore(
+        self.device,
+        &semaphore_state,
+        null,
+        &semaphore,
+    )) {
         .success => semaphore,
         else => error.FailedToCreateSemaphore,
     };
 }
 
 fn createFence(self: *const Engine) !vk.Fence {
-    const create_info = vk.FenceCreateInfo{
+    const fence_state = vk.FenceCreateInfo{
         .flags = .init(.signaled_bit),
     };
     var fence: vk.Fence = .null;
-    return switch (vk.createFence(self.device, &create_info, null, &fence)) {
+    return switch (vk.createFence(self.device, &fence_state, null, &fence)) {
         .success => fence,
         else => error.FailedToCreateFence,
     };
