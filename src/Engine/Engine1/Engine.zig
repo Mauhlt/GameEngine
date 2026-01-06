@@ -711,32 +711,32 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
     defer vk.destroyShaderModule(self.device, vert_shader_module, null);
     const frag_shader_module = try self.createShaderModule(frag_shader_code);
     defer vk.destroyShaderModule(self.device, frag_shader_module, null);
-    const vss_create_info = vk.PipelineShaderStageCreateInfo{
+    const vert_state = vk.PipelineShaderStageCreateInfo{
         .stage = .vertex_bit,
         .module = vert_shader_module,
         .p_name = "main",
     };
-    const fss_create_info = vk.PipelineShaderStageCreateInfo{
+    const frag_state = vk.PipelineShaderStageCreateInfo{
         .stage = .fragment_bit,
         .module = frag_shader_module,
         .p_name = "main",
     };
-    const ss_create_info = [_]vk.PipelineShaderStageCreateInfo{
-        vss_create_info,
-        fss_create_info,
+    const shader_state = [_]vk.PipelineShaderStageCreateInfo{
+        vert_state,
+        frag_state,
     };
     var bind_descs: [1]vk.VertexInputBindingDescription = undefined;
     Vertex3D.getBindingDescription(&bind_descs);
     // inefficient to both declare undefined +
     var attr_descs: [3]vk.VertexInputAttributeDescription = undefined;
     Vertex3D.getAttributeDescriptions(&attr_descs);
-    const vis_create_info = vk.PipelineVertexInputStateCreateInfo{
+    const vertex_input_state = vk.PipelineVertexInputStateCreateInfo{
         .vertex_binding_description_count = @truncate(bind_descs.len),
         .p_vertex_binding_descriptions = &bind_descs,
         .vertex_attribute_description_count = @truncate(attr_descs.len),
         .p_vertex_attribute_descriptions = &attr_descs,
     };
-    const ias_create_info = vk.PipelineInputAssemblyStateCreateInfo{
+    const input_assembly_state = vk.PipelineInputAssemblyStateCreateInfo{
         .topology = .triangle_list,
         .primitive_restart_enable = .false,
     };
@@ -744,15 +744,15 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .viewport,
         .scissor,
     };
-    const ds_create_info = vk.PipelineDynamicStateCreateInfo{
+    const dynamic_state = vk.PipelineDynamicStateCreateInfo{
         .dynamic_state_count = @truncate(dynamic_states.len),
         .p_dynamic_states = &dynamic_states,
     };
-    const vs_create_info = vk.PipelineViewportStateCreateInfo{
+    const viewport_state = vk.PipelineViewportStateCreateInfo{
         .viewport_count = 1,
         .scissor_count = 1,
     };
-    const rs_create_info = vk.PipelineRasterizationStateCreateInfo{
+    const rasterization_state = vk.PipelineRasterizationStateCreateInfo{
         .depth_clamp_enable = .false,
         .rasterizer_discard_enable = .false,
         .polygon_mode = .fill,
@@ -764,7 +764,7 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .depth_bias_clamp = 0,
         .depth_bias_slope_factor = 0,
     };
-    const ms_create_info = vk.PipelineMultisampleStateCreateInfo{
+    const multisample_state = vk.PipelineMultisampleStateCreateInfo{
         .sample_shading_enable = .false,
         .rasterization_samples = .@"1_bit",
         .min_sample_shading = 1,
@@ -772,7 +772,18 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .alpha_to_coverage_enable = .false,
         .alpha_to_one_enable = .false,
     };
-    const cba = vk.PipelineColorBlendAttachmentState{
+    const depth_stencil_state = vk.PipelineDepthStencilStateCreateInfo{
+        .depth_test_enable = .true,
+        .depth_write_enable = .true,
+        .depth_compare_op = .less,
+        .depth_bounds_test_enable = .false,
+        .min_depth_bounds = 0,
+        .max_depth_bounds = 1,
+        .stencil_test_enable = .false,
+        .front = .{},
+        .back = .{},
+    };
+    const color_blend_attachment_state = vk.PipelineColorBlendAttachmentState{
         .color_write_mask = .initMany(&.{ .r_bit, .g_bit, .b_bit, .a_bit }),
         .blend_enable = .false,
         .src_color_blend_factor = .one,
@@ -782,24 +793,24 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         .dst_alpha_blend_factor = .zero,
         .alpha_blend_op = .add,
     };
-    const cbs_create_info = vk.PipelineColorBlendStateCreateInfo{
+    const color_blend_state = vk.PipelineColorBlendStateCreateInfo{
         .logic_op_enable = .false,
         .logic_op = .copy,
         .attachment_count = 1,
-        .p_attachments = &cba,
+        .p_attachments = &color_blend_attachment_state,
         .blend_constants = [_]f32{0} ** 4,
     };
-    const create_info = vk.GraphicsPipelineCreateInfo{
-        .stage_count = @truncate(ss_create_info.len),
-        .p_stages = &ss_create_info,
-        .p_vertex_input_state = &vis_create_info,
-        .p_input_assembly_state = &ias_create_info,
-        .p_viewport_state = &vs_create_info,
-        .p_rasterization_state = &rs_create_info,
-        .p_multisample_state = &ms_create_info,
-        .p_depth_stencil_state = null,
-        .p_color_blend_state = &cbs_create_info,
-        .p_dynamic_state = &ds_create_info,
+    const graphics_pipeline_state = vk.GraphicsPipelineCreateInfo{
+        .stage_count = @truncate(shader_state.len),
+        .p_stages = &shader_state,
+        .p_vertex_input_state = &vertex_input_state,
+        .p_input_assembly_state = &input_assembly_state,
+        .p_viewport_state = &viewport_state,
+        .p_rasterization_state = &rasterization_state,
+        .p_multisample_state = &multisample_state,
+        .p_depth_stencil_state = &depth_stencil_state,
+        .p_color_blend_state = &color_blend_state,
+        .p_dynamic_state = &dynamic_state,
         .render_pass = self.render_pass,
         .layout = self.pipeline_layout,
         .subpass = 0,
@@ -811,7 +822,7 @@ fn createGraphicsPipeline(self: *const Engine, allo: std.mem.Allocator) !vk.Pipe
         self.device,
         .null,
         1,
-        &create_info,
+        &graphics_pipeline_state,
         null,
         &pipeline,
     )) {
@@ -917,58 +928,27 @@ fn findSupportedFormat(
     tiling: vk.ImageTilingFlags,
     feature: vk.FormatFeatureFlags,
 ) !vk.Format {
-    std.debug.print("Tiling: {b}\n", .{tiling.bits});
-    inline for (comptime std.meta.fieldNames(vk.ImageTilingFlagBits)) |field_name| {
-        std.debug.print("Tiling: {} - {}\n", .{
-            tiling.contains(@field(vk.ImageTilingFlagBits, field_name)),
-            @field(vk.ImageTilingFlagBits, field_name),
-        });
-    }
-
     for (candidates) |candidate| {
         var props: vk.FormatProperties = undefined;
         vk.getPhysicalDeviceFormatProperties(self.physical_device, candidate, &props);
-        // vk.ImageTilingFlagBits.optimal
-
-        // std.debug.print("Match 0: {} - {}\n", .{
-        //     tiling.contains(.linear),
-        //     tiling.contains(.optimal),
-        // });
-        // std.debug.print("Match 1: {} - {}\n", .{
-        //     props.linear_tiling_features.supersetOf(feature),
-        //     props.optimal_tiling_features.supersetOf(feature),
-        // });
-
         if (tiling.contains(.linear) and
             props.linear_tiling_features.supersetOf(feature))
         {
             return candidate;
-        }
-
-        if (tiling.contains(.optimal) and
+        } else if (tiling.contains(.optimal) and
             props.optimal_tiling_features.supersetOf(feature))
         {
             return candidate;
         }
     }
-
     return error.FailedToFindSupportedFormat;
 }
 
 fn findDepthFormat(self: *const Engine) !vk.Format {
-    const image_tiling: vk.ImageTilingFlags = .init(.optimal);
-    // std.debug.print("Tiling: {}\n", .{@intFromEnum(vk.ImageTilingFlagBits.optimal)});
-    std.debug.print("Tiling: {b} {b} {}\n", .{
-        image_tiling.bits,
-        @as(u32, @intFromEnum(vk.ImageTilingFlagBits.optimal)),
-        (@as(u32, 0) & @as(u32, 0)) == @as(u32, 0),
-    });
-
-    const feature: vk.FormatFeatureFlags = .init(.depth_stencil_attachment_bit);
     return self.findSupportedFormat(
         &.{ .d32_sfloat, .d32_sfloat_s8_uint, .d24_unorm_s8_uint },
-        image_tiling,
-        feature,
+        .init(.optimal),
+        .init(.depth_stencil_attachment_bit),
     );
 }
 
@@ -994,11 +974,9 @@ fn createTextureImage(self: *Engine, allo: std.mem.Allocator) !void {
     });
     defer allo.free(fullpath);
     // load img + props
-    var img = try zstbi.Image.loadFromFile("./textures/texture.jpg", 4);
+    var img = try zstbi.Image.loadFromFile("./Textures/texture.jpg", 4);
     defer img.deinit();
-    // std.debug.print("Img: {}\n", .{img.data.len});
     if (img.data.len == 0) return error.FailedToLoadTextureImg;
-    // std.debug.print("Image: {}-{}-{}\n", .{ img.width, img.height, img.num_components });
     // data, width, height, num_components, bytes per component, bytes per row, is hdr
     // check if successful
     const image_size: vk.DeviceSize = img.width * img.height * 4; // should this be 4?
@@ -1565,7 +1543,11 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
         .success => {},
         else => error.FailedToBeginRecordingCommandBuffer,
     };
-    const clear_color = vk.ClearValue{ .color = .{ .float32 = [4]f32{ 0, 0, 0, 1 } } };
+    const clear_color = [_]vk.ClearValue{
+        .{ .color = .{ .float32 = [4]f32{ 0, 0, 0, 1 } } },
+        .{ .depth_stencil = .{ .depth = 1, .stencil = 0 } },
+    };
+
     const rp_begin_info = vk.RenderPassBeginInfo{
         .render_pass = self.render_pass,
         .framebuffer = self.swapchain_framebuffers[image_index],
@@ -1651,7 +1633,6 @@ fn updateUniformBuffer(self: *const Engine, current_image: u32) void {
     const axis3: V3 = .init(0);
     const view: M4 = axis2.lookAt(axis3, z_axis);
     // proj
-    // std.debug.print("Aspect Ratio: {}\n", .{self.aspect()});
     const proj: M4 = persp(
         f32,
         std.math.degreesToRadians(45.0),
