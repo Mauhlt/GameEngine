@@ -483,17 +483,20 @@ fn recreateSwapchain(self: *Engine) !void {
         .success => {},
         else => error.FailedToIdleDevice,
     };
+    // cleanup old swapchain
     self.destroySwapchain();
+    // recreate swapchain
     self.swapchain = try self.createSwapchain();
     const ssd = try SSD.init(self.surface, self.physical_device);
     self.swapchain_format = ssd.chooseSurfaceFormat().format;
     self.swapchain_extent = ssd.chooseExtent(&self.window);
     self.swapchain_n_images = try self.getNumSwapchainImages();
     try self.getSwapchainImages();
-    for (0..self.swapchain_n_images) |i| {
+    for (0..self.swapchain_n_images) |i|
         self.swapchain_image_views[i] = try self.createSwapchainImageView(i);
+    try self.createDepthResources();
+    for (0..self.swapchain_n_images) |i|
         self.swapchain_framebuffers[i] = try self.createSwapchainFramebuffer(i);
-    }
 }
 
 fn destroySwapchain(self: *Engine) void {
@@ -555,6 +558,11 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
         .final_layout = .present_src_khr,
     };
 
+    const color_attachment_ref = vk.AttachmentReference{
+        .attachment = 0,
+        .layout = .attachment_optimal,
+    };
+
     const depth_attachment = vk.AttachmentDescription{
         .format = try self.findDepthFormat(),
         .samples = .@"1_bit",
@@ -564,11 +572,6 @@ fn createRenderPass(self: *const Engine) !vk.RenderPass {
         .stencil_store_op = .dont_care,
         .initial_layout = .undefined,
         .final_layout = .depth_stencil_attachment_optimal,
-    };
-
-    const color_attachment_ref = vk.AttachmentReference{
-        .attachment = 0,
-        .layout = .attachment_optimal,
     };
 
     const depth_attachment_ref = vk.AttachmentReference{
@@ -986,16 +989,12 @@ fn createTextureImage(self: *Engine, allo: std.mem.Allocator) !void {
     // init img loader
     zstbi.init(allo);
     defer zstbi.deinit();
-
     // load img
     var img = try zstbi.Image.loadFromFile("./Textures/dog.jpeg", 4);
     defer img.deinit();
     if (img.data.len == 0) return error.FailedToLoadTextureImg;
-    std.debug.print("Img: {} {} {}\n", .{ img.width, img.height, img.num_components });
-    // data, width, height, num_components, bytes per component, bytes per row, is hdr
-    // check if successful
-    const image_size: vk.DeviceSize = img.width * img.height * 4; // should this be 4?
-
+    // # components == 4
+    const image_size: vk.DeviceSize = img.width * img.height * img.num_components;
     // create staging
     var staging_buffer: vk.Buffer = .null;
     var staging_buffer_memory: vk.DeviceMemory = .null;
@@ -1586,7 +1585,7 @@ fn recordCommandBuffer(self: *const Engine, command_buffer: vk.CommandBuffer, im
             .offset = .{ .x = 0, .y = 0 },
             .extent = self.swapchain_extent,
         },
-        .clear_value_count = 1,
+        .clear_value_count = @truncate(clear_color.len),
         .p_clear_values = &clear_color,
     };
     vk.cmdBeginRenderPass(command_buffer, &rp_begin_info, .@"inline");
