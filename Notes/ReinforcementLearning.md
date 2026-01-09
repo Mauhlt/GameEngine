@@ -1,0 +1,148 @@
+# Reinforcement Learning
+# Chapter 1: Markov Decision Process (MDP)
+- agent = can directly control
+    - limbs, character
+- env = cannot directly control but indirectly interact with agent
+    - chessboard, world env
+- state = influence of env on agent
+    - position, velocity, pixel colors, temperature, battery level
+- action = influence of agent on env
+    - motor speed, direction, video game ability
+- reward - can come from agent or env, conventionally from env to agent
+- MDP 
+    - series of state action rewards
+    - can be continuous
+    - can be discrete (like video game level) = episode
+    - written style (both are correct):
+        - s0, a0, r0, s1, a1, r1
+        - s0, a0, r1, s1, a1 
+        - can be written with capital letters to
+- Markov Property = each state dependent only on previous state an nothing further back
+    - RL uses this for simplicity
+    - if model requires more previous states = this will not work
+    - has 1 single reward signal = can be limiting
+    - maybe Taylor Series?
+- policy fn = pi = strategy to get from state to reward
+    - can produce range of different actions
+    - action chosen by either max or random number
+- reward = Gt = all rewards starting from time step t discounted by gamma
+    - gamma = 1 = undiscounted sum = only works for terminating episodes (otherwise it adds to infinity)
+    - 0 <= gamma <= 1
+    - may want to discount early rewards (early reward = less reward later) = delayed gratification
+- Return = Gt = rt + y rt+1 + y^2 rt+2 ...
+- Goal = find policy that maximizes return
+
+# Key Concepts:
+- Agent/Env/State/Action/Reward/Policy/Discounts
+- MDP
+- Exploration Exploitation Tradeoff
+- Temporal Difference
+- Credit Assignment Problem
+- World Models
+- Sample Efficiency
+- Policy Gradient Method
+- Softmax Function
+- Value Functions
+    - Vpi(s) = state-value function
+    - Qpi(s,a) = action-value function
+    - V\*(s) or Q\*(s) = best-case scenario (optimal)
+- Normal RL
+- Bayesian RL
+- Distributional RL
+- Cyclic Dependency
+- Exploration vs Exploitation
+- Generalized Policy Iteration
+- Epsilon-Greedy Algorithm
+- Monte Carlo Method
+- Temporal Difference
+
+# Example 1: Grid - Start - End
+- blocks = model can move onto
+- walls = model cannot move onto
+- episode = reach end or 20 steps
+- state = 2 numbers: x, y coords
+- world model = if agent understands blocks, walls, and uses this to traverse to goal = has world model
+    - aka model of the env
+    - p(s',r | s,a) = prob of transitioning from state s and action a to new state and new action
+- model free = does not have world model
+    - sampling = trying actions
+    - trajectory = sequences of state - action - reward
+    - combine two = sample trajectories
+    - important trajectories = when agent reaches target
+- How to compute?
+    - take reward at end 
+    - go one step back - multiply reward by gamma and add current reward
+    - even with successful trajectory = all return are negative
+    - with unsuccessful trajectory = all returns are more negative
+    - sample trajectories = experiences
+- How to use experiences to update policy?
+    - policy gradient method = push actions up for good returns, push actions down for bad returns
+        - gradient = rate of change
+        - uses softmax
+        - easily works when rewards are: -5, 0, 5
+        - does not work as well when rewards are: 5, 10, 15 or 95, 100, 105
+        - problem is proportionally increases are different but actually they are all increases of 5 and some states any action is good
+        - solution 1: value functions
+    - value functions = keep track of avg return (Gt) expected when following a certain policy (pi) in certain state (s) or state + action (s, a)
+        - Vpi(s, a) = how much return you expect to get in a state and follow a policy
+            - state value function = avg of all action value functions according to policy
+        - Qpi(s'a) = how much return you expect to get when in a state + pick a certain action and then follow policy
+        - both have policy fn attached to them
+    - Normal RL = value fns are deterministic (not random) 
+    - Bayesian/Distributional RL = consider randomness/variance/risk in value fns
+## Strat 1: Policy Gradient Method
+- issues w/ variance (diff. avgs.)
+- more dependent on policy function
+## Strat 2: Policy Gradient Method w/ Value Function
+- accounts for variance = good
+- balance between two: uses both policy + action functions
+- most powerful of 3
+## Strat 3: Action-Value Function = Q-Function
+- take action w/ highest value 
+- policy doesn't track probabilities
+- 100% of probability goes to action w/ highest estimate = some randomness
+- cyclic dependency:
+    - usually action-value based on policy function
+    - now policy also depends on action-value
+    - improving action-value = also improves policy
+- more dependent on value function
+- How to evaluate?
+    - how to develop good value functions?
+        - With Q-Learning:
+            - easiest = take trajectories we collected, avg return values for each combination of state + action
+            - output of q-function = table
+                - working backwards
+                - first encounter of data point = move state action pair toward result by small amount
+                - two instances of same action-value pair
+                    - 1st iter: keep previous computation = -4.57
+                    - 2nd iter: -0.457 + (4.73-0.457) * 0.1
+                        - previous value * (new value - previous value) * discount factor
+                        - constant shifting = how everything gets averaged over time
+        - how does it improve the model?
+            - Q-function gets more accurate
+            - policy function improves = new policy
+            - Q-function gets more accurate for new policy 
+            - new policy improves = newer policy
+            - generalized policy iteration = improves in a cycle of evaluation + improvement
+            - goal = Qpi approach Q* fn
+- Exploration vs Exploitation Problem:
+    - problem for Q-Learning
+        - when learning, model explores distribution space
+        - when running, model always uses best distribution = no longer has diverse responses
+    - solution 1: different model = policy gradient method
+        - uses a policy distribution = naturally has randomness
+    - solution 2: use same model + epsilon-greedy balance
+        - artificially introduce randomness back in
+        - epsilon = proportion of time actions are picked randomly, decreases over time as policy improves + less exploration needed
+        - start value = 0.9 (pick randomly 90% of time, let agent pick optimally 10% of time)
+            - what agent thinks is optimal is not accurate at start
+        - end value = 0.1 or 0.01 or 0.001 = model is good now
+        - above method = monte carlo method = computer algorithm that relies on repeated random sampling to obtain numerical results
+        - use random sample trajectories to identify values of q-samples are
+# Chapter 3: Temporal Difference
+- Problem 1: Monte Carlo = Episode-Episode Basis
+    - in good episodes, all actions represented better
+    - in bad episodes, all actions represented worse
+- Problem 2: Need to Wait to End to Compute Updates
+    - impossible for continuous tasks
+    - hard for really long tasks (lots of memory + discounts make long sequences 0)
