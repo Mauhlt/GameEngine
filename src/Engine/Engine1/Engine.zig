@@ -21,6 +21,7 @@ const Cube = @import("Models/Cube.zig");
 const vk = @import("../../vulkan/vulkan.zig");
 // Zstbi
 const zstbi = @import("zstbi");
+const zigimg = @import("zigimg");
 // Abstract the engine its own file/dir
 // Abstract tho app into its own file/dir
 const MAX_U64 = std.math.maxInt(u64);
@@ -154,7 +155,9 @@ pub fn init(
     }
     // update variables
     self.start = std.time.nanoTimestamp();
+    // show window
     self.window.show();
+    // return
     return self;
 }
 
@@ -983,23 +986,16 @@ fn createTextureImage(self: *Engine, allo: std.mem.Allocator) !void {
     // init img loader
     zstbi.init(allo);
     defer zstbi.deinit();
-    // get abs path to img
-    var exe_path_buf: [1024]u8 = undefined;
-    const exe_path = std.fs.selfExePath(&exe_path_buf) catch unreachable;
-    const idx = std.mem.indexOf(u8, exe_path, "zig-out").?;
-    const basepath = exe_path[0..idx];
-    const fullpath = try std.mem.concat(allo, u8, &.{
-        basepath,
-        "Engine/Engine1/Textures/texture.jpg",
-    });
-    defer allo.free(fullpath);
-    // load img + props
-    var img = try zstbi.Image.loadFromFile("./Textures/texture.jpg", 4);
+
+    // load img
+    var img = try zstbi.Image.loadFromFile("./Textures/dog.jpeg", 4);
     defer img.deinit();
     if (img.data.len == 0) return error.FailedToLoadTextureImg;
+    std.debug.print("Img: {} {} {}\n", .{ img.width, img.height, img.num_components });
     // data, width, height, num_components, bytes per component, bytes per row, is hdr
     // check if successful
     const image_size: vk.DeviceSize = img.width * img.height * 4; // should this be 4?
+
     // create staging
     var staging_buffer: vk.Buffer = .null;
     var staging_buffer_memory: vk.DeviceMemory = .null;
@@ -1785,4 +1781,16 @@ fn aspect(self: *const Engine) f32 {
     const width: f32 = @floatFromInt(self.swapchain_extent.width);
     const height: f32 = @floatFromInt(self.swapchain_extent.height);
     return width / height;
+}
+
+fn imgPath(allo: std.mem.Allocator, rel_path: []const u8) ![]const u8 {
+    // get abs path to img
+    var exe_path_buf: [1024]u8 = undefined;
+    const exe_path = std.fs.selfExePath(&exe_path_buf) catch unreachable;
+    const idx = std.mem.indexOf(u8, exe_path, "zig-out").?;
+    const basepath = exe_path[0..idx];
+    return try std.mem.concat(allo, u8, &.{
+        basepath,
+        rel_path,
+    });
 }

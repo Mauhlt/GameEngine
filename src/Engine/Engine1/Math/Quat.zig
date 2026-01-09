@@ -324,7 +324,7 @@ test "Quaternions" {
     // rotation
     const q = Q4.quatFromAxisAngle(.{ .data = .{ 0, 1, 0 } }, std.math.degreesToRadians(90));
     const v: V3 = .{ .data = .{ 1, 0, 0 } };
-    const rot_vec = Q4.rot1(q, v);
+    const rot_vec = Q4.rotate(q, v);
     try std.testing.expectApproxEqAbs(0, rot_vec.data[0], 1e-4);
     try std.testing.expectApproxEqAbs(0, rot_vec.data[1], 1e-4);
     try std.testing.expectApproxEqAbs(-1, rot_vec.data[2], 1e-4);
