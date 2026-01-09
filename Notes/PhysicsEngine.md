@@ -92,3 +92,127 @@ https://www.youtube.com/watch?v=-_IspRG548E
     - rigidbody structs
     - using booleans =/= not best practice
     - split collision + dynamics
+
+# Soft Body
+https://www.youtube.com/watch?v=SIyKD0Qx2Ak
+- how to implement soft body physics
+    - use simple shape (rectangle)
+    - make sure edges + diagonals are not too close
+    - spring force = -kx
+    - simulate springs
+    - add damping
+    - damping force = (B - A / |B - A|) * (vb - va) * kd
+        - if object moving apart, this moves them together
+        - if object moving together, this moves them apart
+        - kd = damping coefficient
+    - total force = Fs + Fd
+- unexpected stable positions
+    - twists (inside + outside swap)
+    - solve via self-intersection b/w points
+    - solve via shape-matching = skeleton of what object should look like
+        - compute centroid
+        - compute average angle of points
+        - rotate base shape rel to center + angle
+    - preserves more complex shapes - except things like T
+- how to collide soft-bodies:
+    - collision detection
+        - raycast approach 
+            - misses triangles a lot
+        - SAT (separating axis theorem)
+        - want edge whose normal points to other object
+    - collision simulation
+- soft body tetris
+    - create line clears 
+    - create new objects based on cleared old objects
+    - snap objects to new positions
+    - array of bools for position of booard = bit board
+    - feed bitboard to create board
+- how to optimize code
+
+# Algorithm that revolutionized statistics
+- Algorithm: Metropolis or Metropolis-Hastings Algorithm
+- Equations of State Calculations by Fast Computing Machines - Journal of Chemical Physics 
+    - computes physical properties based on monte carlo method 
+    - created metropolis algorithm
+- Algorithm:
+    - pi(x) = known prob distribution
+    - xt <- x0
+    t <- 0
+    for (1..)
+        - generate a candidate x' from dist g(x|y)
+        - calc the acceptance prob alpha = min(1, pi(x')g(x'|xt) / pi(xt)g(xt|x'))
+        - gen u ~ U(0, 1)
+        - if u <= alpha then    
+            - accept x' + set xt+1 = x'
+        - else
+            - reject x' + set xt+1 = xt
+    - return (x0, ..., xt)
+- outcome sample = prob distribution you wanted
+
+- Example: Go to Portland, want to spend time like a local, ask locals how they spend their time, they don't know, that is ok
+- first choose an activity, choose next activity at random, ask local to compare what you do now vs what you want to do next
+- easier to compute prob of 2 options 
+- local: 
+    - 1. if they prefer new thing more, recommend that
+    - 2. if they prefer drinking coffee, might tell you to stay
+    - 3. follow their instructions
+- repeat process long enough, metropolis algorithm gaurantees that new distribution closely resembles target distribution
+- Metropolis Algorithm = Markov Chain Monte Carlo Algorithm
+- use of random number generators to calculate useful numerical results
+    - expected value, complicated prob distribution
+- markov chains = setup dependent events to compute probability
+- S = state space
+- x = initial value/state
+- transition to another value y in state space S
+- prob of transitioning from x to y = transition distribution = conditional prob of going from current value to another state in space
+- transition probability = usually a matrix 
+- under certain conditions, samples that makeup markov chain create a fixed probability distribution = stationary distribution = pi(x)
+- value of 1 part of chain only depends on value directly before it (no history = markov property)
+- p(x) = f(x) / integral of f(x) dx
+    - integral of f(x) dx just normalizes top to be between 0 and 1
+- p(x) = K * f(x)
+    - K = normalizing constant
+    - f(x) = some function
+- K not always possible to compute
+    - Bayes Theorem
+    - Posterior = Likelihood * Prior / (integral of likelihood * prior d0)
+    - den integral is difficult to compute
+    - MCMC avoids this problem
+- Markov Essentials:
+    - S = state space - set of values that chain can take
+    - g(y|x) = transition distribution - dictates likely + unlikely next values from current value
+    - pi(x) = stationary distriution = dictates likely + unlikely values for entire state space
+- Metropolis Algorithm:
+    - flips logic of markov chain monte carlo methods around
+    - S = state space = supports stationary distribution
+    - pi(x) = known stationary distribution = target distribution
+        - needs this form: p(x) = K * f(x)
+        - does not need to be simple
+    - g(y | x) = need to determine transition distribution
+- Chasing Stationary:
+- Sufficient condition to obtain stationary distribution is that transition distribution be detailed balance 
+    - detailed balance = sufficient condition to achieve target distribution
+    - for any two states (x, y), prob of starting at state X and transitioning to state y is prob of state y * transition to state x
+    - pi (x) * g(y | x) = pi(y) * g(x | y)
+    - # of ppl doing each activity won't change even if ppl flow between activities = steady state
+    - detailed balance happens for all pairs of activities
+    - if transition distribution follows detailed balance, then corresponding markov chain is gaurnateed to be our target distribution
+    - if flow is asymmetrical, allow sometimes flow using probability
+    - solve for acceptance fn - constants cancel out = metropolis doesn't need to compute it like bayes
+- Good Metropolis Algo Results 
+    - result are flat = it found a stable set of values
+- Stan = uses NUTS algorithm
+- Top 10 Most Useful Algorithms:
+    - Metropolis Algorithms for Monte Carlo 
+    - Simplex Method for Linear Programming 
+    - Krylov Subspace Iteration Methods 
+    - Decompositional Approach to Matrix Coputations 
+    - Fortran Optmizing Compiler 
+    - QR Algorithms for Eigenvalues
+    - Quicksort Algorithm
+    - Fast Fourier Transform
+    - Integer Relation Detection
+    - Fast Multipole Method
+
+# Monte Carlo Simulation
+- 

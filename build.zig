@@ -83,8 +83,15 @@ pub fn build(b: *std.Build) !void {
     run_cmd.step.dependOn(b.getInstallStep());
 
     // image loading
+    // option 1: zstbi
     const zstbi = b.dependency("zstbi", .{});
     exe.root_module.addImport("zstbi", zstbi.module("root"));
+    // option 2: zigimg
+    const zigimg_dep = b.dependency("zigimg", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("zigimg", zigimg_dep.module("zigimg"));
 
     if (b.args) |args| {
         run_cmd.addArgs(args);

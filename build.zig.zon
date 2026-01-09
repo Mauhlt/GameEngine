@@ -37,8 +37,12 @@
             .hash = "PackedEnumSet-0.0.0-oZSdHnMmAACNzNYnDLGGg4rbB8UeOqVNc_bIVo2IyO11",
         },
         .zstbi = .{
-            .url = "git+https://github.com/zig-gamedev/zstbi#664305dd52640be15cbebd7cd73d1199679933e1",
+            .url = "git+https://github.com/zig-gamedev/zstbi.git#664305dd52640be15cbebd7cd73d1199679933e1",
             .hash = "zstbi-0.11.0-dev-L0Ea_2yVBwA4uh-tHfgdhZcQaWRoZVYlNGs4Dl_WTeuR",
+        },
+        .zigimg = .{
+            .url = "git+https://github.com/zigimg/zigimg.git#9714df09f76891323c7fdbbbf23a17b79024fffb",
+            .hash = "zigimg-0.1.0-8_eo2j4mFwCU7tWnqvkYtzqe-OPRn_bxEql_IJhW85LT",
         },
     },
     .paths = .{
